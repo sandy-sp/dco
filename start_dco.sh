@@ -15,6 +15,12 @@ cleanup() {
 # Trap SIGINT (Ctrl+C) and SIGTERM
 trap cleanup SIGINT SIGTERM EXIT
 
+# Load Environment Variables
+if [ -f .env ]; then
+    export $(cat .env | xargs)
+    echo "Loaded configuration from .env"
+fi
+
 # 1. Check Backend Dependencies
 echo "[1/3] Checking Backend..."
 if [ ! -d "backend/venv" ]; then

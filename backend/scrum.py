@@ -5,7 +5,7 @@ import datetime
 from .memory import MemoryCore
 
 # Set to True to use real Claude/Codex CLI commands
-ENABLE_REAL_AGENTS = False 
+# Reads from DCO_ENABLE_REAL_AGENTS env var
 
 class ScrumMaster:
     def __init__(self, subprocess_manager, memory_core: MemoryCore):
@@ -13,6 +13,8 @@ class ScrumMaster:
         self.memory = memory_core
         self.state = "IDLE"
         self.project_path = os.getcwd()  # Default to current directory
+        # Load configuration
+        self.real_mode = os.getenv("DCO_ENABLE_REAL_AGENTS", "false").lower() == "true"
 
     def set_project_path(self, path: str):
         """Sets the working directory for the sprint."""
@@ -131,7 +133,7 @@ class ScrumMaster:
             cmd_list = ["codex", "-p", prompt]
 
         # --- EXECUTION ---
-        if ENABLE_REAL_AGENTS:
+        if self.real_mode:
             self.sm.start_subprocess(agent_name, cmd_list, cwd=self.project_path)
         else:
             # Simulation Mode

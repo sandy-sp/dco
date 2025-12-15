@@ -36,7 +36,7 @@ export default function ChatConsole() {
                     <input
                         type="text"
                         className="w-full bg-zinc-900 border border-zinc-700 rounded-md py-3 pl-10 pr-4 text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-1 focus:ring-green-500 focus:border-green-500 font-mono text-sm"
-                        placeholder="Enter mission objectives..."
+                        placeholder="Assign a task to the team..."
                         value={input}
                         onChange={(e) => setInput(e.target.value)}
                         disabled={loading}

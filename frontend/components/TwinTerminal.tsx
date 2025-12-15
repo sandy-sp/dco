@@ -78,16 +78,28 @@ export default function TwinTerminal({ connected }: TwinTerminalProps) {
     return (
         <div className="grid grid-cols-2 gap-4 h-full p-4 bg-zinc-900 rounded-lg border border-zinc-800">
             <div className="flex flex-col gap-2">
-                <div className="text-blue-400 font-bold uppercase text-xs tracking-widest flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
-                    Claude Code
+                <div className="flex items-center justify-between text-blue-400 font-bold uppercase text-xs tracking-widest">
+                    <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+                        Claude Code
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <span className="text-zinc-500 text-[10px] normal-case tracking-normal">Architect & Reviewer</span>
+                        <span className="bg-blue-600 text-white px-2 py-0.5 rounded-full text-[10px]">NAVIGATOR</span>
+                    </div>
                 </div>
                 <div className="flex-1 bg-zinc-950 p-2 rounded overflow-hidden" ref={claudeRef} />
             </div>
             <div className="flex flex-col gap-2">
-                <div className="text-green-400 font-bold uppercase text-xs tracking-widest flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                    OpenAI Codex
+                <div className="flex items-center justify-between text-green-400 font-bold uppercase text-xs tracking-widest">
+                    <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                        OpenAI Codex
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <span className="text-zinc-500 text-[10px] normal-case tracking-normal">Builder & Implementer</span>
+                        <span className="bg-green-500 text-black px-2 py-0.5 rounded-full text-[10px]">DRIVER</span>
+                    </div>
                 </div>
                 <div className="flex-1 bg-zinc-950 p-2 rounded overflow-hidden" ref={codexRef} />
             </div>
