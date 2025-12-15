@@ -1,23 +1,17 @@
 # DCO: Dual-Core Orchestrator
 
-**Version:** 2.1.0 ("Mnemosyne" Release)
+**Version:** 1.0.0 (Release)
 
 DCO is a local-first, agentic pair-programming environment that orchestrates two expert AI agents—**Claude Code** and **OpenAI Codex**—to work as Peer Engineers in a "Twin-Turbo" workflow.
 
 ## Features
 
 - **Twin-Terminal Interface:** View real-time agent output side-by-side.
-- **Smart Memory Core:** Persists context and lessons learned in `.brain/`.
+- **Smart Memory Core:** Persists context and lessons learned in `.brain/` (ChromaDB).
 - **Huddle Protocol:** Agents coordinate via `HUDDLE.md` before coding.
 - **Local Orchestration:** Powered by FastAPI and Python subprocesses.
 
-## Prerequisites
-
-- **Python 3.11+**
-- **Node.js 18+**
-- **Git**
-
-## Installation
+## Setup
 
 1.  **Clone the repository:**
     ```bash
@@ -25,31 +19,22 @@ DCO is a local-first, agentic pair-programming environment that orchestrates two
     cd dco
     ```
 
-2.  **Install Backend Dependencies:**
+2.  **Run the Launch Script:**
     ```bash
-    cd backend
-    pip install -r requirements.txt
-    cd ..
+    ./start_dco.sh
     ```
+    *The script automatically installs Python dependencies (in a `venv`) and Node modules.*
 
-3.  **Install Frontend Dependencies:**
-    ```bash
-    cd frontend
-    npm install
-    cd ..
-    ```
+## Usage
 
-## How to Start
+- **Mission Control:** [http://localhost:3000](http://localhost:3000)
+- **Backend API:** [http://localhost:8000](http://localhost:8000)
 
-Run the centralized startup script to launch both the orchestrator and the interface:
+Enter a task in the **Chat Console** (e.g., "Refactor the Auth logic") to start a Twin-Turbo Sprint.
 
-```bash
-./start_dco.sh
-```
+### Configuration
 
-- **Frontend:** [http://localhost:3000](http://localhost:3000)
-- **Backend:** [http://localhost:8000](http://localhost:8000)
-
-## Architecture
-
-See [ARCHITECTURE.md](./ARCHITECTURE.md) for detailed structural diagrams and workflow rules.
+To enable **Real AI Execution** (default is Simulation Mode):
+1.  Open `backend/scrum.py`.
+2.  Set `ENABLE_REAL_AGENTS = True`.
+3.  Ensure `claude` and `codex` CLIs are authenticated in your terminal.
