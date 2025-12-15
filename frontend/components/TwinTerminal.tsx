@@ -18,6 +18,11 @@ export default function TwinTerminal({ connected }: TwinTerminalProps) {
         codex: null,
     });
 
+    const [agentStates, setAgentStates] = useState<{ claude: "active" | "waiting"; codex: "active" | "waiting" }>({
+        claude: "waiting",
+        codex: "waiting",
+    });
+
     useEffect(() => {
         // Initialize Terminals
         const initTerminal = (container: HTMLElement, theme: "blue" | "green") => {
@@ -55,8 +60,16 @@ export default function TwinTerminal({ connected }: TwinTerminalProps) {
         ws.onmessage = (event) => {
             try {
                 const data = JSON.parse(event.data);
-                const { agent, message } = data; // Expected: { agent: "claude"|"codex", message: "..." }
 
+                // Handle Status Updates
+                if (data.type === "status") {
+                    const { agent, state } = data; // { type: "status", agent: "claude", state: "active"|"waiting" }
+                    setAgentStates(prev => ({ ...prev, [agent]: state }));
+                    return;
+                }
+
+                // Handle Log Messages
+                const { agent, message } = data;
                 const term = terminalRefs.current[agent as "claude" | "codex"];
                 if (term) {
                     term.writeln(message);
@@ -80,7 +93,10 @@ export default function TwinTerminal({ connected }: TwinTerminalProps) {
             <div className="flex flex-col gap-2">
                 <div className="flex items-center justify-between text-blue-400 font-bold uppercase text-xs tracking-widest">
                     <div className="flex items-center gap-2">
-                        <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+                        <div className={clsx(
+                            "w-2 h-2 rounded-full transition-all duration-300",
+                            agentStates.claude === "active" ? "bg-blue-500 animate-pulse shadow-[0_0_8px_rgba(59,130,246,0.8)]" : "bg-zinc-700"
+                        )} />
                         Claude Code
                     </div>
                     <div className="flex items-center gap-2">
@@ -93,7 +109,10 @@ export default function TwinTerminal({ connected }: TwinTerminalProps) {
             <div className="flex flex-col gap-2">
                 <div className="flex items-center justify-between text-green-400 font-bold uppercase text-xs tracking-widest">
                     <div className="flex items-center gap-2">
-                        <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                        <div className={clsx(
+                            "w-2 h-2 rounded-full transition-all duration-300",
+                            agentStates.codex === "active" ? "bg-green-500 animate-pulse shadow-[0_0_8px_rgba(74,222,128,0.8)]" : "bg-zinc-700"
+                        )} />
                         OpenAI Codex
                     </div>
                     <div className="flex items-center gap-2">

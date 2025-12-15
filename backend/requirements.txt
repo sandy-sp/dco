@@ -4,3 +4,4 @@ pydantic
 chromadb
 watchdog
 websockets
+python-dotenv
