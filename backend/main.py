@@ -43,22 +43,8 @@ class ConnectionManager:
 manager = ConnectionManager()
 
 # Bridge SubprocessManager logs to WebSockets
-def log_bridge(agent: str, message: str):
-    """Callback function that pushes logs to the WS manager."""
-    payload = json.dumps({"agent": agent, "message": message})
-    try:
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-             asyncio.run_coroutine_threadsafe(manager.broadcast(payload), loop)
-        else:
-             pass
-    except RuntimeError:
-        pass
-
-# Hack: Capture loop at startup to allow threads to schedule async tasks
 @app.on_event("startup")
 async def startup_event():
-    # Only works if running in main thread loop
     try:
         loop = asyncio.get_running_loop()
         def async_log_bridge(agent, message):
@@ -69,23 +55,38 @@ async def startup_event():
     except:
         pass
 
+# --- API MODELS ---
 class MissionRequest(BaseModel):
     task: str
+    project_path: str = "."  # Default to current directory
 
 class HuddleUpdateRequest(BaseModel):
     content: str
     agent: str
 
+# --- ENDPOINTS ---
+
 @app.post("/start_mission")
 async def start_mission(request: MissionRequest):
-    """Triggers the Scrum Master to start a sprint."""
+    """Triggers the Scrum Master to start a sprint in the specific folder."""
+    
+    # 1. Set the context to the requested folder (Important!)
+    scrum_master.set_project_path(request.project_path)
+    
+    # 2. Start the sprint
     scrum_master.start_sprint(request.task)
-    return {"status": "Mission Started", "task": request.task}
+    
+    return {
+        "status": "Mission Started", 
+        "task": request.task, 
+        "working_dir": request.project_path
+    }
 
 @app.post("/update_huddle")
 async def update_huddle(request: HuddleUpdateRequest):
-    """Appends content to the HUDDLE.md file."""
-    path = ".brain/HUDDLE.md"
+    # Use the dynamic project path from scrum_master
+    path = os.path.join(scrum_master.project_path, ".brain/HUDDLE.md")
+    
     import datetime
     timestamp = datetime.datetime.now().strftime("%H:%M:%S")
     entry = f"\n\n**{request.agent} ({timestamp}):** {request.content}"
@@ -99,8 +100,11 @@ async def update_huddle(request: HuddleUpdateRequest):
 
 @app.get("/huddle")
 async def get_huddle():
-    """Serves the HUDDLE.md content."""
-    path = ".brain/HUDDLE.md"
+    """Serves the HUDDLE.md content from the active project."""
+    if not scrum_master.project_path:
+        return "No project selected."
+        
+    path = os.path.join(scrum_master.project_path, ".brain/HUDDLE.md")
     if os.path.exists(path):
         return FileResponse(path)
     return "No active huddle."

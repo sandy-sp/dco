@@ -1,7 +1,6 @@
 import subprocess
 import threading
-import asyncio
-from typing import List, Callable, Dict
+from typing import List, Callable, Dict, Optional
 
 class SubprocessManager:
     def __init__(self):
@@ -9,34 +8,35 @@ class SubprocessManager:
         self.log_callbacks: List[Callable[[str, str], None]] = []
 
     def register_callback(self, callback: Callable[[str, str], None]):
-        """Registers a callback to receive logs (agent_name, log_line)."""
         self.log_callbacks.append(callback)
 
-    def start_subprocess(self, name: str, command: List[str]):
-        """Starts a subprocess and spawns a thread to monitor stdout."""
-        print(f"[SubprocessManager] Starting {name} with command: {' '.join(command)}")
+    def start_subprocess(self, name: str, command: List[str], cwd: Optional[str] = None):
+        """Starts a subprocess in a specific directory (cwd)."""
+        print(f"[SubprocessManager] Starting {name} in {cwd or '.'} with: {' '.join(command)}")
         
-        process = subprocess.Popen(
-            command,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            bufsize=1,  # Line buffered
-            universal_newlines=True
-        )
-        
-        self.active_processes[name] = process
-        
-        # Start monitoring thread
-        monitor_thread = threading.Thread(
-            target=self._monitor_output,
-            args=(name, process),
-            daemon=True
-        )
-        monitor_thread.start()
+        try:
+            process = subprocess.Popen(
+                command,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1,
+                universal_newlines=True,
+                cwd=cwd  # <--- CRITICAL: Execute inside the project folder
+            )
+            
+            self.active_processes[name] = process
+            
+            monitor_thread = threading.Thread(
+                target=self._monitor_output,
+                args=(name, process),
+                daemon=True
+            )
+            monitor_thread.start()
+        except Exception as e:
+            self._broadcast_log(name, f"Failed to start process: {e}")
 
     def _monitor_output(self, name: str, process: subprocess.Popen):
-        """Reads stdout line by line and triggers callbacks."""
         try:
             for line in iter(process.stdout.readline, ''):
                 if not line:
@@ -54,7 +54,6 @@ class SubprocessManager:
                 del self.active_processes[name]
 
     def _broadcast_log(self, name: str, message: str):
-        """Invokes all registered callbacks."""
         for callback in self.log_callbacks:
             try:
                 callback(name, message)
