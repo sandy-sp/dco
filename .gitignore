@@ -1,0 +1,17 @@
+# DCO Specific
+.brain/logs.json
+.brain/memory.db/
+
+# System & IDE
+.DS_Store
+.vscode/
+.idea/
+
+# Languages/Frameworks
+node_modules/
+__pycache__/
+*.pyc
+.env
+dist/
+build/
+coverage/
