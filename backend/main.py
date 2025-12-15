@@ -21,8 +21,8 @@ app.add_middleware(
 
 # Initialize Singletons
 subprocess_manager = SubprocessManager()
-scrum_master = ScrumMaster(subprocess_manager)
 memory_core = MemoryCore()
+scrum_master = ScrumMaster(subprocess_manager, memory_core)
 
 # WebSocket Connection Manager
 class ConnectionManager:
@@ -72,11 +72,30 @@ async def startup_event():
 class MissionRequest(BaseModel):
     task: str
 
+class HuddleUpdateRequest(BaseModel):
+    content: str
+    agent: str
+
 @app.post("/start_mission")
 async def start_mission(request: MissionRequest):
     """Triggers the Scrum Master to start a sprint."""
     scrum_master.start_sprint(request.task)
     return {"status": "Mission Started", "task": request.task}
+
+@app.post("/update_huddle")
+async def update_huddle(request: HuddleUpdateRequest):
+    """Appends content to the HUDDLE.md file."""
+    path = ".brain/HUDDLE.md"
+    import datetime
+    timestamp = datetime.datetime.now().strftime("%H:%M:%S")
+    entry = f"\n\n**{request.agent} ({timestamp}):** {request.content}"
+    
+    try:
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(entry)
+        return {"status": "Huddle Updated"}
+    except Exception as e:
+        return {"status": "Error", "message": str(e)}
 
 @app.get("/huddle")
 async def get_huddle():
