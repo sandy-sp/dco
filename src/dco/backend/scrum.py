@@ -25,7 +25,7 @@ class ScrumMaster:
         if os.path.exists(path):
             self.project_path = path
             self.memory.set_project_path(path)
-            self.cartographer = Cartographer(path)
+            self.cartographer.root_path = path
             print(f"[ScrumMaster] Context: {path}")
 
     def start_sprint(self, task_name: str):
@@ -209,7 +209,7 @@ class ScrumMaster:
             output = result.stdout + "\n" + result.stderr
             status = "PASSED" if result.returncode == 0 else "FAILED"
             
-            report = f"Verification Output:\n```\n{output.strip()[-2000:]}\n```" # Cap output size
+            report = f"Test Output:\n```\n{output.strip()[-2000:]}\n```" # Cap output size
             self._append_to_huddle("System", report)
             print(f"🧪 [ScrumMaster] Verification {status}.")
             
@@ -261,9 +261,9 @@ class ScrumMaster:
 
             prompt = (
                 f"ROLE: ARCHITECT. TASK: {task}.\n"
-                f"CONTEXT: \nProject Structure:\n{map_content}\n"
                 f"ACTION: Read `.brain/SKILLS.md`. Write a plan in `{huddle_path_rel}`."
             )
+            prompt += f"\n\nCONTEXT (REPO MAP):\n{map_content}"
         elif role == "DRIVER":
             prompt = (
                 f"ROLE: BUILDER. ACTION: Read `{huddle_path_rel}`. Implement the pending tasks."

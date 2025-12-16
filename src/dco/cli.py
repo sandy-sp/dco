@@ -68,7 +68,7 @@ class LogBuffer:
     def get_renderable(self):
         return Text.from_markup("\n".join(self.logs))
 
-def handle_slash_command(user_input: str, scrum: ScrumMaster, log_buffer: LogBuffer):
+def handle_command(user_input: str, scrum: ScrumMaster, console: Console):
     """Handles commands starting with /."""
     if not user_input.startswith("/"):
         return False
@@ -80,7 +80,7 @@ def handle_slash_command(user_input: str, scrum: ScrumMaster, log_buffer: LogBuf
         with open(huddle_path, "w", encoding="utf-8") as f:
             f.write("# Huddle Cleared\n")
         scrum.state = "IDLE"
-        log_buffer.append("SYSTEM", "Memory cleared and state reset.")
+        # log_buffer.append("SYSTEM", "Memory cleared and state reset.") # Removed to match signature
         console.print("[bold cyan][SYSTEM] Memory cleared.[/bold cyan]")
         
     elif cmd == "/map":
@@ -153,7 +153,7 @@ def main():
         if user_input.lower() in ['exit', 'quit']:
             break
             
-        if handle_slash_command(user_input, scrum, log_buffer):
+        if handle_command(user_input, scrum, console):
             continue
 
         # Start Sprint
