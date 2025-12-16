@@ -2,19 +2,29 @@ import threading
 import time
 import os
 import datetime
+import subprocess
+from typing import Optional, Callable
 from .memory import MemoryCore
 from dotenv import load_dotenv
 
 # Load Config
 load_dotenv()
-ENABLE_REAL_AGENTS = os.getenv("DCO_ENABLE_REAL_AGENTS", "false").lower() == "true"
+ENABLE_REAL_AGENTS = os.getenv("DCO_ENABLE_REAL_AGENTS", "false").lower() == "true" # Reads from DCO_ENABLE_REAL_AGENTS env var
 
 class ScrumMaster:
-    def __init__(self, subprocess_manager, memory_core: MemoryCore):
+    def __init__(self, subprocess_manager, memory_core: MemoryCore, broadcast_func: Optional[Callable[[dict], None]] = None):
         self.sm = subprocess_manager
         self.memory = memory_core
+        self.broadcast_func = broadcast_func
         self.state = "IDLE"
         self.project_path = os.getcwd()
+    
+    def _set_state(self, new_state: str):
+        """Updates state and broadcasts the change."""
+        self.state = new_state
+        print(f"[ScrumMaster] State changed to: {new_state}")
+        if self.broadcast_func:
+            self.broadcast_func({"type": "state_change", "state": new_state})
 
     def set_project_path(self, path: str):
         if os.path.exists(path):
@@ -32,28 +42,44 @@ class ScrumMaster:
         workflow_thread.start()
 
     def _run_sequential_workflow(self, task_name: str):
-        self.state = "PLANNING"
+        self._set_state("PLANNING")
         self.initialize_huddle(task_name)
 
         # --- PHASE 1: NAVIGATOR (Planning) ---
         print("[ScrumMaster] Starting Phase 1: Planning (Claude)")
         self._run_agent("claude", "NAVIGATOR", task_name)
         self.sm.wait_for_process("claude") # <--- WAIT FOR COMPLETION
+        self._create_checkpoint("Plan Created")
 
         # --- PHASE 2: DRIVER (Building) ---
-        self.state = "BUILDING"
+        self._set_state("BUILDING")
         print("[ScrumMaster] Starting Phase 2: Building (Codex)")
         self._run_agent("codex", "DRIVER", task_name)
         self.sm.wait_for_process("codex") # <--- WAIT FOR COMPLETION
+        self._create_checkpoint("Build Implemented")
 
         # --- PHASE 3: REVIEW (Refining) ---
-        self.state = "REVIEWING"
+        self._set_state("REVIEWING")
         print("[ScrumMaster] Starting Phase 3: Reviewing (Claude)")
         self._run_agent("claude", "REVIEWER", task_name)
         self.sm.wait_for_process("claude") # <--- WAIT FOR COMPLETION
+        self._create_checkpoint("Review Fixes")
 
-        self.state = "IDLE"
+        self._set_state("IDLE")
         print("[ScrumMaster] Sprint Completed.")
+
+    def _create_checkpoint(self, message: str):
+        """Creates a git commit to save progress."""
+        try:
+            # Check if inside a git repo
+            if not os.path.exists(os.path.join(self.project_path, ".git")):
+                return
+
+            print(f"[ScrumMaster] Creating checkpoint: {message}")
+            subprocess.run(["git", "add", "."], cwd=self.project_path, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.run(["git", "commit", "-m", f"DCO Auto-Save: {message}"], cwd=self.project_path, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except Exception as e:
+            print(f"[ScrumMaster] Checkpoint failed: {e}")
 
     def initialize_huddle(self, task_name: str):
         path = os.path.join(self.project_path, ".brain/HUDDLE.md")

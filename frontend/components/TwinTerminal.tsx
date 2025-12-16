@@ -18,12 +18,10 @@ export default function TwinTerminal({ connected }: TwinTerminalProps) {
         codex: null,
     });
 
-    const [agentStates, setAgentStates] = useState<{ claude: "active" | "waiting"; codex: "active" | "waiting" }>({
-        claude: "waiting",
-        codex: "waiting",
-    });
+    const [activePhase, setActivePhase] = useState<"IDLE" | "PLANNING" | "BUILDING" | "REVIEWING">("IDLE");
 
     useEffect(() => {
+        if (!connected) return; // Simple usage to silence warning
         // Initialize Terminals
         const initTerminal = (container: HTMLElement, theme: "blue" | "green") => {
             const term = new Terminal({
@@ -61,10 +59,9 @@ export default function TwinTerminal({ connected }: TwinTerminalProps) {
             try {
                 const data = JSON.parse(event.data);
 
-                // Handle Status Updates
-                if (data.type === "status") {
-                    const { agent, state } = data; // { type: "status", agent: "claude", state: "active"|"waiting" }
-                    setAgentStates(prev => ({ ...prev, [agent]: state }));
+                // Handle Phase Updates
+                if (data.type === "state_change") {
+                    setActivePhase(data.state); // "IDLE" | "PLANNING" | "BUILDING" | "REVIEWING"
                     return;
                 }
 
@@ -89,38 +86,62 @@ export default function TwinTerminal({ connected }: TwinTerminalProps) {
     }, []);
 
     return (
-        <div className="grid grid-cols-2 gap-4 h-full p-4 bg-zinc-900 rounded-lg border border-zinc-800">
-            <div className="flex flex-col gap-2">
-                <div className="flex items-center justify-between text-blue-400 font-bold uppercase text-xs tracking-widest">
-                    <div className="flex items-center gap-2">
-                        <div className={clsx(
-                            "w-2 h-2 rounded-full transition-all duration-300",
-                            agentStates.claude === "active" ? "bg-blue-500 animate-pulse shadow-[0_0_8px_rgba(59,130,246,0.8)]" : "bg-zinc-700"
-                        )} />
-                        Claude Code
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <span className="text-zinc-500 text-[10px] normal-case tracking-normal">Architect & Reviewer</span>
-                        <span className="bg-blue-600 text-white px-2 py-0.5 rounded-full text-[10px]">NAVIGATOR</span>
-                    </div>
+        <div className="flex flex-col h-full gap-2">
+            {/* Status Pill */}
+            <div className="flex justify-center">
+                <div className={clsx(
+                    "px-4 py-1 rounded-full text-xs font-bold uppercase tracking-wider transition-all duration-500 border",
+                    activePhase === "IDLE" && "bg-zinc-900 text-zinc-500 border-zinc-800",
+                    activePhase === "PLANNING" && "bg-blue-950/30 text-blue-400 border-blue-900/50 shadow-[0_0_15px_rgba(59,130,246,0.2)]",
+                    activePhase === "BUILDING" && "bg-green-950/30 text-green-400 border-green-900/50 shadow-[0_0_15px_rgba(74,222,128,0.2)]",
+                    activePhase === "REVIEWING" && "bg-purple-950/30 text-purple-400 border-purple-900/50 shadow-[0_0_15px_rgba(192,132,252,0.2)]"
+                )}>
+                    {activePhase === "IDLE" && "🔴 SYSTEM IDLE"}
+                    {activePhase === "PLANNING" && "🔵 PLANNING PHASE (ARCHITECTING)"}
+                    {activePhase === "BUILDING" && "🟢 BUILDING PHASE (IMPLEMENTING)"}
+                    {activePhase === "REVIEWING" && "🟣 REVIEW PHASE (QUALITY ASSURANCE)"}
                 </div>
-                <div className="flex-1 bg-zinc-950 p-2 rounded overflow-hidden" ref={claudeRef} />
             </div>
-            <div className="flex flex-col gap-2">
-                <div className="flex items-center justify-between text-green-400 font-bold uppercase text-xs tracking-widest">
-                    <div className="flex items-center gap-2">
-                        <div className={clsx(
-                            "w-2 h-2 rounded-full transition-all duration-300",
-                            agentStates.codex === "active" ? "bg-green-500 animate-pulse shadow-[0_0_8px_rgba(74,222,128,0.8)]" : "bg-zinc-700"
-                        )} />
-                        OpenAI Codex
+
+            <div className="grid grid-cols-2 gap-4 flex-1 min-h-0 bg-zinc-900 rounded-lg border border-zinc-800 p-4 relative">
+                {/* Visual Dimming Overlay Logic */}
+                <div className={clsx("flex flex-col gap-2 transition-opacity duration-500",
+                    (activePhase === "BUILDING") ? "opacity-30 blur-[1px]" : "opacity-100"
+                )}>
+                    <div className="flex items-center justify-between text-blue-400 font-bold uppercase text-xs tracking-widest">
+                        <div className="flex items-center gap-2">
+                            <div className={clsx(
+                                "w-2 h-2 rounded-full transition-all duration-300",
+                                (activePhase === "PLANNING" || activePhase === "REVIEWING") ? "bg-blue-500 animate-pulse shadow-[0_0_8px_rgba(59,130,246,0.8)]" : "bg-zinc-700"
+                            )} />
+                            Claude Code
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <span className="text-zinc-500 text-[10px] normal-case tracking-normal">Architect & Reviewer</span>
+                            <span className="bg-blue-600 text-white px-2 py-0.5 rounded-full text-[10px]">NAVIGATOR</span>
+                        </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                        <span className="text-zinc-500 text-[10px] normal-case tracking-normal">Builder & Implementer</span>
-                        <span className="bg-green-500 text-black px-2 py-0.5 rounded-full text-[10px]">DRIVER</span>
-                    </div>
+                    <div className="flex-1 bg-zinc-950 p-2 rounded overflow-hidden" ref={claudeRef} />
                 </div>
-                <div className="flex-1 bg-zinc-950 p-2 rounded overflow-hidden" ref={codexRef} />
+
+                <div className={clsx("flex flex-col gap-2 transition-opacity duration-500",
+                    (activePhase === "PLANNING" || activePhase === "REVIEWING") ? "opacity-30 blur-[1px]" : "opacity-100"
+                )}>
+                    <div className="flex items-center justify-between text-green-400 font-bold uppercase text-xs tracking-widest">
+                        <div className="flex items-center gap-2">
+                            <div className={clsx(
+                                "w-2 h-2 rounded-full transition-all duration-300",
+                                activePhase === "BUILDING" ? "bg-green-500 animate-pulse shadow-[0_0_8px_rgba(74,222,128,0.8)]" : "bg-zinc-700"
+                            )} />
+                            OpenAI Codex
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <span className="text-zinc-500 text-[10px] normal-case tracking-normal">Builder & Implementer</span>
+                            <span className="bg-green-500 text-black px-2 py-0.5 rounded-full text-[10px]">DRIVER</span>
+                        </div>
+                    </div>
+                    <div className="flex-1 bg-zinc-950 p-2 rounded overflow-hidden" ref={codexRef} />
+                </div>
             </div>
         </div>
     );

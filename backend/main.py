@@ -47,12 +47,19 @@ manager = ConnectionManager()
 async def startup_event():
     try:
         loop = asyncio.get_running_loop()
+        
         def async_log_bridge(agent, message):
              payload = json.dumps({"agent": agent, "message": message})
              asyncio.run_coroutine_threadsafe(manager.broadcast(payload), loop)
-             
+        
+        def async_state_bridge(data):
+             payload = json.dumps(data) # data is {"type": "state_change", "state": "..."}
+             asyncio.run_coroutine_threadsafe(manager.broadcast(payload), loop)
+
         subprocess_manager.register_callback(async_log_bridge)
-    except:
+        scrum_master.broadcast_func = async_state_bridge
+        
+    except RuntimeError:
         pass
 
 # --- API MODELS ---
