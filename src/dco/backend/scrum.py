@@ -19,7 +19,7 @@ class ScrumMaster:
         self.project_path = os.getcwd()
         self.broadcast_func = broadcast_func
         self.max_iterations = 10 
-        self.cartographer = None
+        self.cartographer = Cartographer(self.project_path)
 
     def set_project_path(self, path: str):
         if os.path.exists(path):
@@ -68,6 +68,7 @@ class ScrumMaster:
         
         # Maps the codebase at start of mission
         print("🗺️ [ScrumMaster] Mapping codebase...")
+        # (Map generation is now handled per-agent call or we can keep it here for initial check)
         self.cartographer.save_map()
         
         if is_continuation:
@@ -94,7 +95,7 @@ class ScrumMaster:
             self.sm.wait_for_process("codex")
 
             # 1.5 VERIFY (Tool Use)
-            self._run_verification()
+            self._run_verification(task_payload)
 
             # 2. REVIEW
             self._set_state("REVIEWING")
@@ -178,7 +179,7 @@ class ScrumMaster:
         except Exception as e:
             print(f"⚠️ [ScrumMaster] Pruning failed: {e}")
 
-    def _run_verification(self):
+    def _run_verification(self, task=None):
         """Runs automated tests and reports results to the Huddle."""
         print("🧪 [ScrumMaster] Running Verification...")
         
@@ -208,7 +209,7 @@ class ScrumMaster:
             output = result.stdout + "\n" + result.stderr
             status = "PASSED" if result.returncode == 0 else "FAILED"
             
-            report = f"Verification Results ({status}):\n```\n{output.strip()[-2000:]}\n```" # Cap output size
+            report = f"Verification Output:\n```\n{output.strip()[-2000:]}\n```" # Cap output size
             self._append_to_huddle("System", report)
             print(f"🧪 [ScrumMaster] Verification {status}.")
             
@@ -250,6 +251,7 @@ class ScrumMaster:
         
         # --- PROMPTS ---
         if role == "NAVIGATOR":
+            self.cartographer.save_map()
             map_content = ""
             try:
                 with open(os.path.join(self.project_path, ".brain/repo_map.txt"), "r") as f:
@@ -259,7 +261,7 @@ class ScrumMaster:
 
             prompt = (
                 f"ROLE: ARCHITECT. TASK: {task}.\n"
-                f"CONTEXT MAP:\n{map_content}\n"
+                f"CONTEXT: \nProject Structure:\n{map_content}\n"
                 f"ACTION: Read `.brain/SKILLS.md`. Write a plan in `{huddle_path_rel}`."
             )
         elif role == "DRIVER":

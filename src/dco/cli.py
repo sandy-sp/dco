@@ -68,6 +68,51 @@ class LogBuffer:
     def get_renderable(self):
         return Text.from_markup("\n".join(self.logs))
 
+def handle_slash_command(user_input: str, scrum: ScrumMaster, log_buffer: LogBuffer):
+    """Handles commands starting with /."""
+    if not user_input.startswith("/"):
+        return False
+
+    cmd = user_input.split(" ")[0].lower()
+    
+    if cmd == "/clear":
+        huddle_path = os.path.join(scrum.project_path, ".brain/HUDDLE.md")
+        with open(huddle_path, "w", encoding="utf-8") as f:
+            f.write("# Huddle Cleared\n")
+        scrum.state = "IDLE"
+        log_buffer.append("SYSTEM", "Memory cleared and state reset.")
+        console.print("[bold cyan][SYSTEM] Memory cleared.[/bold cyan]")
+        
+    elif cmd == "/map":
+        map_path = os.path.join(scrum.project_path, ".brain/repo_map.txt")
+        if os.path.exists(map_path):
+            with open(map_path, "r") as f:
+                console.print(Panel(f.read(), title="Repo Map", border_style="blue", box=ROUNDED))
+        else:
+            console.print("[bold red]Repo Map not found. Run a mission first.[/bold red]")
+    
+    elif cmd == "/config":
+        config_info = (
+            f"Project Path: {scrum.project_path}\n"
+            f"Real Agents Enabled: {ENABLE_REAL_AGENTS}\n"
+            f"Current State: {scrum.state}"
+        )
+        console.print(Panel(config_info, title="Configuration", border_style="magenta", box=ROUNDED))
+        
+    elif cmd == "/help":
+        help_text = (
+            "/clear  - Wipe HUDDLE.md and reset state\n"
+            "/map    - Print repo map\n"
+            "/config - Show configuration\n"
+            "/help   - Show this help"
+        )
+        console.print(Panel(help_text, title="Available Commands", border_style="white", box=ROUNDED))
+        
+    else:
+        console.print(f"[bold red]Unknown command: {user_input}[/bold red]")
+        
+    return True
+
 # --- MAIN ---
 
 def main():
@@ -108,47 +153,7 @@ def main():
         if user_input.lower() in ['exit', 'quit']:
             break
             
-        # --- SLASH COMMANDS ---
-        if user_input.startswith("/"):
-            cmd = user_input.split(" ")[0].lower()
-            
-            if cmd == "/clear":
-                huddle_path = os.path.join(scrum.project_path, ".brain/HUDDLE.md")
-                # Create empty huddle or just truncate
-                with open(huddle_path, "w", encoding="utf-8") as f:
-                    f.write("# Huddle Cleared\n")
-                scrum.state = "IDLE"
-                log_buffer.append("SYSTEM", "Memory cleared and state reset.")
-                console.print("[bold cyan][SYSTEM] Memory cleared.[/bold cyan]")
-                
-            elif cmd == "/map":
-                map_path = os.path.join(scrum.project_path, ".brain/repo_map.txt")
-                if os.path.exists(map_path):
-                    with open(map_path, "r") as f:
-                        console.print(Panel(f.read(), title="Repo Map", border_style="blue", box=ROUNDED))
-                else:
-                    console.print("[bold red]Repo Map not found. Run a mission first.[/bold red]")
-            
-            elif cmd == "/config":
-                config_info = (
-                    f"Project Path: {scrum.project_path}\n"
-                    f"Real Agents Enabled: {ENABLE_REAL_AGENTS}\n"
-                    f"Current State: {scrum.state}"
-                )
-                console.print(Panel(config_info, title="Configuration", border_style="magenta", box=ROUNDED))
-                
-            elif cmd == "/help":
-                help_text = (
-                    "/clear  - Wipe HUDDLE.md and reset state\n"
-                    "/map    - Print repo map\n"
-                    "/config - Show configuration\n"
-                    "/help   - Show this help"
-                )
-                console.print(Panel(help_text, title="Available Commands", border_style="white", box=ROUNDED))
-                
-            else:
-                console.print(f"[bold red]Unknown command: {user_input}[/bold red]")
-                
+        if handle_slash_command(user_input, scrum, log_buffer):
             continue
 
         # Start Sprint
