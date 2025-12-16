@@ -56,3 +56,24 @@ echo "Backend: http://localhost:8000"
 echo "Press Ctrl+C to stop."
 
 wait
+
+#!/bin/bash
+
+# Check arguments
+if [ "$1" == "--cli" ]; then
+    echo "🚀 Launching DCO Terminal Mode..."
+    python3 dco_cli.py
+else
+    echo "🚀 Launching DCO Web Mode (Mission Control)..."
+    # Start Backend
+    uvicorn backend.main:app --reload --port 8000 &
+    BACKEND_PID=$!
+    
+    # Start Frontend
+    cd frontend && npm run dev &
+    FRONTEND_PID=$!
+    
+    echo "Services started. Press Ctrl+C to stop."
+    trap "kill $BACKEND_PID $FRONTEND_PID; exit" SIGINT
+    wait
+fi
