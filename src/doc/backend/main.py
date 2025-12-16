@@ -9,7 +9,7 @@ from .subprocess_manager import SubprocessManager
 from .scrum import ScrumMaster
 from .memory import MemoryCore
 
-app = FastAPI(title="DCO Orchestrator")
+app = FastAPI(title="DOC Orchestrator")
 
 app.add_middleware(
     CORSMiddleware,
@@ -92,29 +92,24 @@ async def start_mission(request: MissionRequest):
 @app.post("/update_huddle")
 async def update_huddle(request: HuddleUpdateRequest):
     # Use the dynamic project path from scrum_master
-    path = os.path.join(scrum_master.project_path, ".brain/HUDDLE.md")
-    
-    import datetime
-    timestamp = datetime.datetime.now().strftime("%H:%M:%S")
-    entry = f"\n\n**{request.agent} ({timestamp}):** {request.content}"
-    
+    # Log to DB instead of file
     try:
-        with open(path, "a", encoding="utf-8") as f:
-            f.write(entry)
+        scrum_master.memory.log_interaction(request.agent, request.content, type="agent")
         return {"status": "Huddle Updated"}
     except Exception as e:
         return {"status": "Error", "message": str(e)}
 
 @app.get("/huddle")
 async def get_huddle():
-    """Serves the HUDDLE.md content from the active project."""
+    """Serves the interaction log from the active project memory."""
     if not scrum_master.project_path:
         return "No project selected."
         
-    path = os.path.join(scrum_master.project_path, ".brain/HUDDLE.md")
-    if os.path.exists(path):
-        return FileResponse(path)
-    return "No active huddle."
+    try:
+        content = scrum_master.memory.get_recent_huddle(limit=100)
+        return content
+    except:
+        return "No active huddle."
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):

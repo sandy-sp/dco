@@ -1,4 +1,4 @@
-# DCO: Dual-Core Orchestrator ("Twin-Turbo" Edition)
+# DOC: Dual Orchestrator Orchestrator ("Twin-Turbo" Edition)
 ### The Local-First, Agentic Pair-Programming Environment
 
 **Version:** 2.1.0 ("Mnemosyne" Release)
@@ -10,17 +10,17 @@
 
 ## 1. Executive Summary
 
-**DCO (Dual-Core Orchestrator)** is a locally hosted "Agentic IDE" that transforms your terminal into a self-learning software development agency.
+**DOC (Dual Orchestrator Orchestrator)** is a locally hosted "Agentic IDE" that transforms your terminal into a self-learning software development agency.
 
-Instead of relying on a single chat interface, DCO orchestrates two expert AI agents—**Claude Code** and **OpenAI Codex**—to work as **Peer Engineers**. They operate in parallel, utilizing a "Twin-Turbo" workflow where they plan, code, and review each other's work simultaneously.
+Instead of relying on a single chat interface, DOC orchestrates two expert AI agents—**Claude Code** and **OpenAI Codex**—to work as **Peer Engineers**. They operate in parallel, utilizing a "Twin-Turbo" workflow where they plan, code, and review each other's work simultaneously.
 
-Distinct from standard coding assistants, DCO possesses **Persistent Memory**. It utilizes a "Brain" directory (`.brain/`) in your project to maintain architectural patterns, debugging history, and user preferences, ensuring that mistakes are never repeated.
+Distinct from standard coding assistants, DOC possesses **Persistent Memory**. It utilizes a "Brain" directory (`.brain/`) in your project to maintain architectural patterns, debugging history, and user preferences, ensuring that mistakes are never repeated.
 
 ---
 
 ## 2. Core Philosophy: "Extreme Programming" with AI
 
-DCO moves beyond the "Human-Manager / AI-Worker" paradigm. It implements an **AI Pair Programming** model:
+DOC moves beyond the "Human-Manager / AI-Worker" paradigm. It implements an **AI Pair Programming** model:
 
 1.  **Twin-Terminal Execution:** Claude and Codex run in separate, parallel subprocesses.
 2.  **Shared-State Concurrency:** Agents work on isolated local Git branches (`feature/claude` and `feature/codex`) to prevent file overwrite conflicts.
@@ -52,7 +52,7 @@ The system follows a **Three-Tier Architecture**, fully hosted on your local mac
     * **State Machine:** Tracks project state (`PLANNING`, `SPRINTING`, `MERGING`, `REVIEWING`).
 
 ### Tier 3: The Memory Core (The "Brain")
-DCO implements a **3-Tier Memory Architecture** to solve context window limitations and amnesia.
+DOC implements a **3-Tier Memory Architecture** to solve context window limitations and amnesia.
 
 | Tier | Type | Implementation | Role |
 | :--- | :--- | :--- | :--- |
@@ -64,7 +64,7 @@ DCO implements a **3-Tier Memory Architecture** to solve context window limitati
 
 ## 4. The "Brain" Directory Structure
 
-Every DCO-managed project contains a hidden `.brain` folder acting as the Single Source of Truth.
+Every DOC-managed project contains a hidden `.brain` folder acting as the Single Source of Truth.
 
 ```text
 my-project/
@@ -86,7 +86,7 @@ my-project/
 
 ## 5\. The "Twin-Turbo" Workflow Loop
 
-When you submit a task (e.g., "Build a React Todo App with FastAPI Backend"), DCO initiates the following loop:
+When you submit a task (e.g., "Build a React Todo App with FastAPI Backend"), DOC initiates the following loop:
 
 ### Phase 1: Ingestion & Planning (The Huddle)
 
@@ -142,7 +142,7 @@ claude login
 codex login
 ```
 
-### Step 2: Install DCO System
+### Step 2: Install DOC System
 
 ```bash
 git clone [https://github.com/your-repo/dco-twin-turbo.git](https://github.com/your-repo/dco-twin-turbo.git)
@@ -172,9 +172,9 @@ make start
 
 ### Onboarding a New Project
 
-1.  Open DCO Dashboard.
+1.  Open DOC Dashboard.
 2.  Click **"Import Repository"** and select your local folder.
-3.  DCO initializes `.brain/`, scans your code, and builds the **L3 Vector Index** (\~30s).
+3.  DOC initializes `.brain/`, scans your code, and builds the **L3 Vector Index** (\~30s).
 
 ### The Chat Interface
 

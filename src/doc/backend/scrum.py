@@ -9,7 +9,9 @@ from .cartographer import Cartographer
 from dotenv import load_dotenv
 
 load_dotenv()
-ENABLE_REAL_AGENTS = os.getenv("DCO_ENABLE_REAL_AGENTS", "false").lower() == "true"
+ENABLE_REAL_AGENTS = os.getenv("DOC_ENABLE_REAL_AGENTS", "false").lower() == "true"
+CLAUDE_BIN = os.getenv("DOC_CLAUDE_BIN", "claude")
+CODEX_BIN = os.getenv("DOC_CODEX_BIN", "codex")
 
 class ScrumMaster:
     def __init__(self, subprocess_manager, memory_core: MemoryCore, broadcast_func=None):
@@ -20,6 +22,16 @@ class ScrumMaster:
         self.broadcast_func = broadcast_func
         self.max_iterations = 10 
         self.cartographer = Cartographer(self.project_path)
+        
+        # Register DB Logger to capture Agent Process Output
+        self.sm.register_callback(self._capture_agent_output)
+
+    def _capture_agent_output(self, agent: str, message: str):
+        """Callback to log subprocess output to Memory."""
+        # Avoid logging system/debug noise if possible, but for now capture all.
+        # Filter out empty lines?
+        if message.strip():
+             self.memory.log_interaction(agent, message, type="agent_log")
 
     def set_project_path(self, path: str):
         if os.path.exists(path):
@@ -52,16 +64,11 @@ class ScrumMaster:
     def get_latest_question(self):
         """Reads the last entry from the Huddle to show the user."""
         try:
-            huddle_path = os.path.join(self.project_path, ".brain/HUDDLE.md")
-            with open(huddle_path, "r", encoding="utf-8") as f:
-                lines = f.readlines()
-            # Get the last non-empty line
-            for line in reversed(lines):
-                if line.strip():
-                    return line.strip()
-            return "Agents requested input."
+            # We fetch the latest status msg. If format is agent: msg, we return msg or whole line.
+            # get_latest_status returns raw document content.
+            return self.memory.get_latest_status()
         except:
-            return "Check HUDDLE.md for details."
+            return "Check logs for details."
 
     def _run_autonomous_loop(self, task_payload: str, is_continuation: bool):
         iteration = 0
@@ -134,62 +141,10 @@ class ScrumMaster:
             self._set_state("AWAITING_USER")
 
     def _check_and_prune_context(self):
-        """Checks if HUDDLE.md is too large and summarizes it if so."""
-        huddle_path = os.path.join(self.project_path, ".brain/HUDDLE.md")
-        if not os.path.exists(huddle_path):
-            return
-
-        try:
-            with open(huddle_path, "r", encoding="utf-8") as f:
-                lines = f.readlines()
-            
-            if len(lines) > 200:
-                print("✂️ [ScrumMaster] Context Pruning Triggered (Lines > 200)")
-                
-                # 1. Summarize content via Agent (using subprocess for simplicity to get output)
-                content = "".join(lines)
-                summary_prompt = (
-                    f"ACTION: Summarize the following session log. Focus on pending tasks and current status. "
-                    f"Discard completed steps.\n\nLOG:\n{content[-4000:]}" # Send last 4k chars to fit context
-                )
-                
-                # We need a way to get the summary text back. check_output is useful here.
-                # Assuming 'claude --print' outputs just the response.
-                import subprocess
-                cmd = ["claude", "--print", summary_prompt]
-                if not ENABLE_REAL_AGENTS:
-                    summary = "Context Summarized.\n- Pending: Check bugs.\n- Status: In Progress."
-                else:
-                    try:
-                        result = subprocess.run(
-                            cmd, 
-                            cwd=self.project_path, 
-                            capture_output=True, 
-                            text=True, 
-                            timeout=20
-                        )
-                        summary = result.stdout.strip()
-                    except:
-                        summary = "Context Summarized (Auto)."
-
-                # 2. Archive Old Huddle
-                self.memory.archive_huddle(content)
-                
-                # 3. Overwrite Huddle with Summary
-                timestamp = datetime.datetime.now().strftime("%H:%M")
-                new_huddle = (
-                    f"# Mission Continuation\n> Pruned: {timestamp}\n\n"
-                    f"**System:** Previous context archived. Summary:\n"
-                    f"{summary}\n\n"
-                    f"**System:** Resuming flow.\n"
-                )
-                
-                with open(huddle_path, "w", encoding="utf-8") as f:
-                    f.write(new_huddle)
-                    
-                print("✂️ [ScrumMaster] Context Pruned & Archived.")
-        except Exception as e:
-            print(f"⚠️ [ScrumMaster] Pruning failed: {e}")
+        """Checks if context is too large. (Handled by DB limit now, stubbed for future expansion)."""
+        # With DB-based history fetching (limit=50), strict file pruning is less critical.
+        # We can implement summarization later if window size becomes an issue even with limit.
+        pass
 
     def _run_verification(self, task=None):
         """Runs automated tests and reports results to the Huddle."""
@@ -231,13 +186,12 @@ class ScrumMaster:
     def _run_learning_phase(self, task: str):
         """Extracts lessons learned and saves them to SKILLS.md."""
         try:
-            huddle_path = os.path.join(self.project_path, ".brain/HUDDLE.md")
-            with open(huddle_path, "r", encoding="utf-8") as f:
-                content = f.read()
+            # Fetch robust history for learning
+            content = self.memory.get_recent_huddle(limit=500)
 
             prompt = (
                 f"Review this session log. Extract 1-3 technical 'Rules of Thumb' or 'Gotchas' we learned. "
-                f"Format them as bullet points. If nothing new was learned, say 'NO_UPDATE'.\n\nLOG:\n{content[-4000:]}"
+                f"Format them as bullet points. If nothing new was learned, say 'NO_UPDATE'.\n\nLOG:\n{content}"
             )
 
             cmd = ["claude", "--print", prompt]
@@ -259,12 +213,20 @@ class ScrumMaster:
                  output = result.stdout.strip()
 
             if "NO_UPDATE" not in output:
-                skills_path = os.path.join(self.project_path, ".brain/SKILLS.md")
-                timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
-                entry = f"\n\n### Learned: {task} ({timestamp})\n{output}"
-                with open(skills_path, "a", encoding="utf-8") as f:
-                    f.write(entry)
-                print("🧠 [ScrumMaster] Skills updated.")
+                # Skills persist in collection
+                # For now, we still write to SKILLS.md as requested OR use memory.
+                # Task says "Update ScrumMaster... use memory.py for state".
+                # But Step 1 of task list says "Add skills collection". 
+                # Let's do both: Log to DB and keep file for visibility if desirable, or migrate fully.
+                # The deliverable says "All state is persisted in .brain/memory.db".
+                
+                self.memory.add_memory("skills", output, metadata={"task": task, "timestamp": datetime.datetime.now().isoformat()})
+                
+                # Also keep SKILLS.md for human readability? The prompt implies full migration.
+                # "Remove dependency on markdown files for logic". 
+                # Be safe: Write to DB primarily. 
+                print("🧠 [ScrumMaster] Skills updated in DB.")
+
             else:
                 print("🧠 [ScrumMaster] No new skills extracted.")
 
@@ -273,11 +235,7 @@ class ScrumMaster:
 
     def _analyze_huddle_status(self):
         try:
-            huddle_path = os.path.join(self.project_path, ".brain/HUDDLE.md")
-            with open(huddle_path, "r", encoding="utf-8") as f:
-                content = f.read().strip()
-            
-            recent_log = content[-1000:] 
+            recent_log = self.memory.get_latest_status()
             if "STATUS: COMPLETED" in recent_log:
                 return "COMPLETED"
             if "STATUS: NEEDS_INPUT" in recent_log:
@@ -287,22 +245,15 @@ class ScrumMaster:
             return "CONTINUE"
 
     def initialize_huddle(self, task_name: str):
-        path = os.path.join(self.project_path, ".brain/HUDDLE.md")
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        timestamp = datetime.datetime.now().strftime("%H:%M")
-        header = f"# Mission: {task_name}\n> Started: {timestamp}\n\n**System:** Mission initialized.\n"
-        with open(path, "w", encoding="utf-8") as f:
-            f.write(header)
+        self.memory.log_interaction("System", f"Mission: {task_name} initialized.", type="system")
 
     def _append_to_huddle(self, agent: str, message: str):
-        path = os.path.join(self.project_path, ".brain/HUDDLE.md")
-        timestamp = datetime.datetime.now().strftime("%H:%M")
-        entry = f"\n\n**{agent} ({timestamp}):** {message}\n"
-        with open(path, "a", encoding="utf-8") as f:
-            f.write(entry)
+        self.memory.log_interaction(agent, message, type="agent" if agent not in ["User", "System"] else "system")
 
     def _run_agent(self, agent_name: str, role: str, task: str):
-        huddle_path_rel = ".brain/HUDDLE.md"
+        # Fetch dynamic context
+        # Provide last ~50 messages
+        huddle_context = self.memory.get_recent_huddle(limit=50)
         
         # --- PROMPTS ---
         if role == "NAVIGATOR":
@@ -313,38 +264,58 @@ class ScrumMaster:
                     map_content = f.read()
             except:
                 pass
-
+            
             prompt = (
                 f"ROLE: ARCHITECT. TASK: {task}.\n"
-                f"ACTION: Read `.brain/SKILLS.md`. Write a plan in `{huddle_path_rel}`."
+                f"ACTION: Read the history below. Write a plan if needed or proceed.\n"
+                f"HISTORY:\n{huddle_context}\n"
             )
             prompt += f"\n\nCONTEXT (REPO MAP):\n{map_content}"
         elif role == "DRIVER":
             prompt = (
-                f"ROLE: BUILDER. ACTION: Read `{huddle_path_rel}`. Implement the pending tasks."
+                f"ROLE: BUILDER. ACTION: Read history. Implement the pending tasks.\n"
+                f"HISTORY:\n{huddle_context}"
             )
         elif role == "REVIEWER":
             prompt = (
                 f"ROLE: QA. ACTION: Check the recent code changes.\n"
-                f"- If success, write 'STATUS: COMPLETED' to `{huddle_path_rel}`.\n"
-                f"- If bugs, describe them in `{huddle_path_rel}` for the Driver.\n"
-                f"- If you need the user, write 'STATUS: NEEDS_INPUT'."
+                f"- If success, output 'STATUS: COMPLETED'.\n"
+                f"- If bugs, describe them.\n"
+                f"- If you need the user, output 'STATUS: NEEDS_INPUT'.\n"
+                f"HISTORY:\n{huddle_context}"
             )
-
-        cmd = ["claude" if agent_name == "claude" else "codex", "--print" if agent_name == "claude" else "-p", prompt]
+        
+        cmd = [CLAUDE_BIN if agent_name == "claude" else CODEX_BIN, "--print" if agent_name == "claude" else "-p", prompt]
         
         if ENABLE_REAL_AGENTS:
             self.sm.start_subprocess(agent_name, cmd, cwd=self.project_path)
         else:
-            # --- SIMULATION LOGIC (Updated to loop) ---
-            # Randomly finish after a few steps or ask for input
+            # --- SIMULATION LOGIC ---
             outcome = random.choice(["STATUS: COMPLETED", "Fixing bugs...", "Fixing bugs...", "STATUS: NEEDS_INPUT"])
-            msg = f"Analyzing... {outcome}"
             
+            # Since we switched to DB, we simulate appending to DB via logic in loop?
+            # No, correct way is: self._run_agent CALLS subprocess.
+            # The subprocess (real or mocked) would output text.
+            # But wait, `_run_agent` in previous code mocked via `bash -c ... echo >> HUDDLE.md`.
+            # We must update the mock to NOT write to HUDDLE.md, but just output to stdout.
+            # SubprocessManager captures stdout and calls `_broadcast_log`.
+            # BUT: where does it get written to DB?
+            # SubprocessManager broadcast calls `cli_logger`. CLI logger appends to `log_buffer`.
+            # It seems `ScrumMaster` doesn't automatically capture SM output to DB?
+            # Wait, `ScrumMaster` needs to capture the output and write to DB.
+            # Currently `ScrumMaster` depends on `_append_to_huddle` manually or expects Agents to write to file?
+            # In previous implementation, Agents (simulated) echoed into HUDDLE.md.
+            # NOW: We need to capture their output.
+            
+            # SubprocessManager *does* capture output and calls callbacks.
+            # We need to register a callback in ScrumMaster to log to memory!
+            
+            # I will add a callback registration in ScrumMaster.__init__ or start_sprint.
+            
+            msg = f"Analyzing... {outcome}"
             if role == "REVIEWER":
-                # Ensure we don't just stop immediately every time in simulation
-                mock_cmd = f"echo '[{role}] Reviewing...'; sleep 1; echo '{msg}' >> {huddle_path_rel}"
+                 mock_cmd = f"echo '[{role}] Reviewing...'; sleep 1; echo '{msg}'"
             else:
-                mock_cmd = f"echo '[{role}] Coding...'; sleep 1; echo 'Work done.' >> {huddle_path_rel}"
-                
+                 mock_cmd = f"echo '[{role}] Coding...'; sleep 1; echo 'Work done.'"
+                 
             self.sm.start_subprocess(agent_name, ["bash", "-c", mock_cmd], cwd=self.project_path)

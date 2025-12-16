@@ -1,2 +1,2 @@
 include README.md
-recursive-include src/dco/backend *.py
+recursive-include src/doc/backend *.py

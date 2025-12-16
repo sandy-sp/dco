@@ -9,9 +9,9 @@ from rich.markdown import Markdown
 from rich.text import Text
 from rich.box import ROUNDED
 
-from dco.backend.subprocess_manager import SubprocessManager
-from dco.backend.scrum import ScrumMaster, ENABLE_REAL_AGENTS
-from dco.backend.memory import MemoryCore
+from doc.backend.subprocess_manager import SubprocessManager
+from doc.backend.scrum import ScrumMaster, ENABLE_REAL_AGENTS, CLAUDE_BIN, CODEX_BIN
+from doc.backend.memory import MemoryCore
 
 console = Console()
 
@@ -36,22 +36,15 @@ def make_layout() -> Layout:
     
     return layout
 
-def get_huddle_content(project_path: str) -> Markdown:
-    """Reads the tail of HUDDLE.md"""
-    huddle_path = os.path.join(project_path, ".brain/HUDDLE.md")
-    if not os.path.exists(huddle_path):
-        return Markdown("*Huddle not initialized*")
-    
+def get_huddle_content(memory: MemoryCore) -> Markdown:
+    """Reads the tail of the interaction log from Memory."""
     try:
-        with open(huddle_path, "r", encoding="utf-8") as f:
-            lines = f.readlines()
-        
-        # Keep last 15 lines but ensure we don't cut markdown blocks awkwardly
-        # (Simple approach: just grab tail)
-        content = "".join(lines[-20:])
+        content = memory.get_recent_huddle(limit=20)
+        if not content.strip():
+             return Markdown("*Huddle is empty / System Ready*")
         return Markdown(content)
-    except:
-        return Markdown("*Error reading Huddle*")
+    except Exception as e:
+        return Markdown(f"*Error reading Memory: {e}*")
 
 class LogBuffer:
     """Simple buffer to hold recent logs for display."""
@@ -76,9 +69,7 @@ def handle_command(user_input: str, scrum: ScrumMaster, console: Console):
     cmd = user_input.split(" ")[0].lower()
     
     if cmd == "/clear":
-        huddle_path = os.path.join(scrum.project_path, ".brain/HUDDLE.md")
-        with open(huddle_path, "w", encoding="utf-8") as f:
-            f.write("# Huddle Cleared\n")
+        scrum.memory.clear_huddle()
         scrum.state = "IDLE"
         # log_buffer.append("SYSTEM", "Memory cleared and state reset.") # Removed to match signature
         console.print("[bold cyan][SYSTEM] Memory cleared.[/bold cyan]")
@@ -101,12 +92,33 @@ def handle_command(user_input: str, scrum: ScrumMaster, console: Console):
         
     elif cmd == "/help":
         help_text = (
-            "/clear  - Wipe HUDDLE.md and reset state\n"
+            "/clear  - Wipe Huddle Memory and reset state\n"
             "/map    - Print repo map\n"
+            "/mode   - Toggle Simulation / Real Agents\n"
+            "/status - Show active repo and agents\n"
             "/config - Show configuration\n"
             "/help   - Show this help"
         )
         console.print(Panel(help_text, title="Available Commands", border_style="white", box=ROUNDED))
+    
+    elif cmd == "/mode":
+        # Toggle Sim/Real
+        import doc.backend.scrum as scrum_module
+        current = scrum_module.ENABLE_REAL_AGENTS
+        scrum_module.ENABLE_REAL_AGENTS = not current
+        state = "REAL AGENTS" if scrum_module.ENABLE_REAL_AGENTS else "SIMULATION"
+        console.print(f"[bold yellow]Runtime Mode Switched to: {state}[/bold yellow]")
+        
+    elif cmd == "/status":
+        import doc.backend.scrum as scrum_module
+        mode = "REAL AGENTS" if scrum_module.ENABLE_REAL_AGENTS else "SIMULATION"
+        status_info = (
+            f"Project: [bold cyan]{scrum.project_path}[/bold cyan]\n"
+            f"Mode:    [bold yellow]{mode}[/bold yellow]\n"
+            f"Agents:  Claude='{scrum_module.CLAUDE_BIN}', Codex='{scrum_module.CODEX_BIN}'\n"
+            f"State:   {scrum.state}"
+        )
+        console.print(Panel(status_info, title="System Status", border_style="blue", box=ROUNDED))
         
     else:
         console.print(f"[bold red]Unknown command: {user_input}[/bold red]")
@@ -124,7 +136,7 @@ def main():
     log_buffer = LogBuffer(size=8)
 
     # 1. Project Setup
-    console.print(Panel.fit("[bold blue]DCO: Dual-Core Orchestrator[/bold blue]\n[dim]Twin-Turbo Terminal Edition[/dim]", box=ROUNDED))
+    console.print(Panel.fit("[bold blue]DOC: Dual Orchestrator Core[/bold blue]\n[dim]Twin-Turbo Terminal Edition[/dim]", box=ROUNDED))
     default_path = os.getcwd()
     project_path = console.input(f"[bold yellow]Enter Project Path (default: {default_path}): [/bold yellow]") or default_path
     scrum.set_project_path(project_path)
@@ -169,7 +181,7 @@ def main():
                 while scrum.state != "IDLE" and scrum.state != "AWAITING_USER":
                     
                     # Update Huddle View
-                    huddle_md = get_huddle_content(scrum.project_path)
+                    huddle_md = get_huddle_content(scrum.memory)
                     layout["huddle"].update(Panel(huddle_md, title="📣 The Huddle", border_style="cyan", box=ROUNDED))
                     
                     # Update Logs View
