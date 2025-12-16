@@ -80,7 +80,11 @@ class ScrumMaster:
             
             self._set_state("PLANNING")
             self._run_agent("claude", "NAVIGATOR", task_payload)
-            self.sm.wait_for_process("claude")
+            if not self.sm.wait_for_process("claude", timeout=120):
+                 print("🛑 [ScrumMaster] Planning Timed Out! Killing process...")
+                 self.sm.kill_all()
+                 self._set_state("AWAITING_USER")
+                 return
 
         while iteration < self.max_iterations:
             iteration += 1
@@ -92,7 +96,10 @@ class ScrumMaster:
             # 1. BUILD
             self._set_state("BUILDING")
             self._run_agent("codex", "DRIVER", "Follow instructions in HUDDLE.md")
-            self.sm.wait_for_process("codex")
+            if not self.sm.wait_for_process("codex", timeout=120):
+                 print("🛑 [ScrumMaster] Build Timed Out! Killing process...")
+                 self.sm.kill_all()
+                 break
 
             # 1.5 VERIFY (Tool Use)
             self._run_verification(task_payload)
@@ -100,13 +107,18 @@ class ScrumMaster:
             # 2. REVIEW
             self._set_state("REVIEWING")
             self._run_agent("claude", "REVIEWER", "Review the implementation in HUDDLE.md")
-            self.sm.wait_for_process("claude")
+            if not self.sm.wait_for_process("claude", timeout=120):
+                 print("🛑 [ScrumMaster] Review Timed Out! Killing process...")
+                 self.sm.kill_all()
+                 break
 
             # 3. CHECK STATUS
             status = self._analyze_huddle_status()
             
             if status == "COMPLETED":
                 print("✅ [ScrumMaster] Mission Accomplished.")
+                print("🧠 [ScrumMaster] Assimilating new skills...")
+                self._run_learning_phase(task_payload)
                 self._set_state("IDLE")
                 break
             elif status == "USER_INPUT_REQUIRED":
@@ -215,6 +227,49 @@ class ScrumMaster:
             
         except Exception as e:
             self._append_to_huddle("System", f"Verification Failed to Run: {e}")
+
+    def _run_learning_phase(self, task: str):
+        """Extracts lessons learned and saves them to SKILLS.md."""
+        try:
+            huddle_path = os.path.join(self.project_path, ".brain/HUDDLE.md")
+            with open(huddle_path, "r", encoding="utf-8") as f:
+                content = f.read()
+
+            prompt = (
+                f"Review this session log. Extract 1-3 technical 'Rules of Thumb' or 'Gotchas' we learned. "
+                f"Format them as bullet points. If nothing new was learned, say 'NO_UPDATE'.\n\nLOG:\n{content[-4000:]}"
+            )
+
+            cmd = ["claude", "--print", prompt]
+            
+            if not ENABLE_REAL_AGENTS:
+                output = "NO_UPDATE" # Simulation default
+                # Random chance to learn something in sim
+                if random.random() < 0.3:
+                     output = "- Always check for null values in JSON parsing."
+            else:
+                 import subprocess
+                 result = subprocess.run(
+                    cmd, 
+                    cwd=self.project_path, 
+                    capture_output=True, 
+                    text=True, 
+                    timeout=20
+                )
+                 output = result.stdout.strip()
+
+            if "NO_UPDATE" not in output:
+                skills_path = os.path.join(self.project_path, ".brain/SKILLS.md")
+                timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+                entry = f"\n\n### Learned: {task} ({timestamp})\n{output}"
+                with open(skills_path, "a", encoding="utf-8") as f:
+                    f.write(entry)
+                print("🧠 [ScrumMaster] Skills updated.")
+            else:
+                print("🧠 [ScrumMaster] No new skills extracted.")
+
+        except Exception as e:
+            print(f"⚠️ [ScrumMaster] Learning phase failed: {e}")
 
     def _analyze_huddle_status(self):
         try:

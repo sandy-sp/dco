@@ -39,11 +39,15 @@ class SubprocessManager:
             self._broadcast_log(name, f"Failed to start process: {e}")
             return False
 
-    def wait_for_process(self, name: str):
-        """Blocks until the specified process finishes."""
+    def wait_for_process(self, name: str, timeout: Optional[int] = None) -> bool:
+        """Blocks until the specified process finishes. Returns False if timed out."""
         if name in self.active_processes:
-            self.active_processes[name].wait()
-            # Clean up is handled by _monitor_output, but we wait here.
+            try:
+                self.active_processes[name].wait(timeout=timeout)
+                return True
+            except subprocess.TimeoutExpired:
+                return False
+        return True
 
     def _monitor_output(self, name: str, process: subprocess.Popen):
         try:
@@ -61,6 +65,20 @@ class SubprocessManager:
             self._broadcast_log(name, "Process terminated.")
             if name in self.active_processes:
                 del self.active_processes[name]
+
+    def kill_all(self):
+        """Terminates all active processes."""
+        for name, process in list(self.active_processes.items()):
+            try:
+                print(f"[SubprocessManager] Killing {name}...")
+                process.terminate()
+                try:
+                    process.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+            except Exception as e:
+                print(f"[SubprocessManager] Failed to kill {name}: {e}")
+        self.active_processes.clear()
 
     def _broadcast_log(self, name: str, message: str):
         for callback in self.log_callbacks:

@@ -135,53 +135,57 @@ def main():
     sm.register_callback(cli_logger)
 
     # 2. Main Input Loop
-    while True:
-        # --- DYNAMIC PROMPT LOGIC ---
-        if scrum.state == "AWAITING_USER":
-            last_msg = scrum.get_latest_question()
-            console.print(f"\n[bold red]🤖 Agents Need Input:[/bold red]")
-            console.print(Panel(last_msg, border_style="red", box=ROUNDED))
-            prompt_text = "[bold yellow]Reply to Agents > [/bold yellow]"
-        else:
-            prompt_text = "\n[bold green]Mission Instruction > [/bold green]"
+    try:
+        while True:
+            # --- DYNAMIC PROMPT LOGIC ---
+            if scrum.state == "AWAITING_USER":
+                last_msg = scrum.get_latest_question()
+                console.print(f"\n[bold red]🤖 Agents Need Input:[/bold red]")
+                console.print(Panel(last_msg, border_style="red", box=ROUNDED))
+                prompt_text = "[bold yellow]Reply to Agents > [/bold yellow]"
+            else:
+                prompt_text = "\n[bold green]Mission Instruction > [/bold green]"
 
-        try:
-            user_input = console.input(prompt_text)
-        except KeyboardInterrupt:
-            break
+            try:
+                user_input = console.input(prompt_text)
+            except KeyboardInterrupt:
+                break
 
-        if user_input.lower() in ['exit', 'quit']:
-            break
+            if user_input.lower() in ['exit', 'quit']:
+                break
+                
+            if handle_command(user_input, scrum, console):
+                continue
+
+            # Start Sprint
+            scrum.start_sprint(user_input)
+
+            # --- LIVE TUI MODE ---
+            # Activate the Live Display while agents are working
+            layout = make_layout()
+            layout["header"].update(Panel(f"Mission: {user_input}", style="bold white on blue", box=ROUNDED))
             
-        if handle_command(user_input, scrum, console):
-            continue
+            with Live(layout, refresh_per_second=4, screen=False):
+                while scrum.state != "IDLE" and scrum.state != "AWAITING_USER":
+                    
+                    # Update Huddle View
+                    huddle_md = get_huddle_content(scrum.project_path)
+                    layout["huddle"].update(Panel(huddle_md, title="📣 The Huddle", border_style="cyan", box=ROUNDED))
+                    
+                    # Update Logs View
+                    layout["logs"].update(Panel(log_buffer.get_renderable(), title="🖥️  System Logs", border_style="dim", box=ROUNDED))
+                    
+                    time.sleep(0.25)
 
-        # Start Sprint
-        scrum.start_sprint(user_input)
-
-        # --- LIVE TUI MODE ---
-        # Activate the Live Display while agents are working
-        layout = make_layout()
-        layout["header"].update(Panel(f"Mission: {user_input}", style="bold white on blue", box=ROUNDED))
-        
-        with Live(layout, refresh_per_second=4, screen=False):
-            while scrum.state != "IDLE" and scrum.state != "AWAITING_USER":
-                
-                # Update Huddle View
-                huddle_md = get_huddle_content(scrum.project_path)
-                layout["huddle"].update(Panel(huddle_md, title="📣 The Huddle", border_style="cyan", box=ROUNDED))
-                
-                # Update Logs View
-                layout["logs"].update(Panel(log_buffer.get_renderable(), title="🖥️  System Logs", border_style="dim", box=ROUNDED))
-                
-                time.sleep(0.25)
-
-        # Loop cleanup
-        if scrum.state == "AWAITING_USER":
-            # The loop in main() will hit the "AWAITING_USER" block at top
-            pass
-        else:
-            console.print("[bold green]Mission Completed.[/bold green]")
+            # Loop cleanup
+            if scrum.state == "AWAITING_USER":
+                # The loop in main() will hit the "AWAITING_USER" block at top
+                pass
+            else:
+                console.print("[bold green]Mission Completed.[/bold green]")
+    finally:
+        sm.kill_all()
+        console.print("[dim]Backend processes terminated.[/dim]")
 
 if __name__ == "__main__":
     main()
