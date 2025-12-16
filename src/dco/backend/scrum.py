@@ -5,6 +5,7 @@ import datetime
 import re
 import random
 from .memory import MemoryCore
+from .cartographer import Cartographer
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -18,11 +19,13 @@ class ScrumMaster:
         self.project_path = os.getcwd()
         self.broadcast_func = broadcast_func
         self.max_iterations = 10 
+        self.cartographer = None
 
     def set_project_path(self, path: str):
         if os.path.exists(path):
             self.project_path = path
             self.memory.set_project_path(path)
+            self.cartographer = Cartographer(path)
             print(f"[ScrumMaster] Context: {path}")
 
     def start_sprint(self, task_name: str):
@@ -32,6 +35,10 @@ class ScrumMaster:
         
         is_continuation = (self.state == "AWAITING_USER")
         
+        # Ensure cartographer is ready
+        if not self.cartographer:
+            self.cartographer = Cartographer(self.project_path)
+
         workflow_thread = threading.Thread(
             target=self._run_autonomous_loop, 
             args=(task_name, is_continuation)
@@ -58,6 +65,10 @@ class ScrumMaster:
 
     def _run_autonomous_loop(self, task_payload: str, is_continuation: bool):
         iteration = 0
+        
+        # Maps the codebase at start of mission
+        print("🗺️ [ScrumMaster] Mapping codebase...")
+        self.cartographer.save_map()
         
         if is_continuation:
             self._append_to_huddle("User", task_payload)
@@ -239,8 +250,16 @@ class ScrumMaster:
         
         # --- PROMPTS ---
         if role == "NAVIGATOR":
+            map_content = ""
+            try:
+                with open(os.path.join(self.project_path, ".brain/repo_map.txt"), "r") as f:
+                    map_content = f.read()
+            except:
+                pass
+
             prompt = (
                 f"ROLE: ARCHITECT. TASK: {task}.\n"
+                f"CONTEXT MAP:\n{map_content}\n"
                 f"ACTION: Read `.brain/SKILLS.md`. Write a plan in `{huddle_path_rel}`."
             )
         elif role == "DRIVER":

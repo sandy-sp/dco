@@ -4,11 +4,11 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dco"
-version = "1.0.0"
+version = "0.1.0"
 authors = [
   { name="Antigravity", email="agent@example.com" },
 ]
-description = "Dual-Core Orchestrator - Twin-Turbo Terminal Edition"
+description = "Dual-Core Orchestrator for AI Agents"
 readme = "README.md"
 requires-python = ">=3.9"
 classifiers = [
