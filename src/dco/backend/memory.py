@@ -7,6 +7,7 @@ class MemoryCore:
         self.persist_path = persist_path
         self.client = None
         self._init_client(persist_path)
+        self.project_path = os.path.dirname(os.path.dirname(os.path.abspath(persist_path))) # Initialize project_path
 
     def _init_client(self, path):
         """Initializes or re-initializes the ChromaDB client."""
@@ -18,8 +19,25 @@ class MemoryCore:
         except Exception as e:
             print(f"[MemoryCore] Failed to load DB at {path}: {e}")
 
+    def archive_huddle(self, content: str):
+        """Archives the current Huddle content to a timestamped file."""
+        import datetime
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        archive_dir = os.path.join(self.project_path, ".brain/logs")
+        os.makedirs(archive_dir, exist_ok=True)
+        
+        filename = f"archive_{timestamp}.md"
+        path = os.path.join(archive_dir, filename)
+        
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(content)
+        
+        print(f"[MemoryCore] Huddle archived to {path}")
+        return path
+
     def set_project_path(self, project_path: str):
         """Updates the DB location to be inside the project folder."""
+        self.project_path = project_path # Update project_path
         new_db_path = os.path.join(project_path, ".brain/memory.db")
         if new_db_path != self.persist_path:
             self.persist_path = new_db_path

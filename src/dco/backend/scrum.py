@@ -72,11 +72,18 @@ class ScrumMaster:
 
         while iteration < self.max_iterations:
             iteration += 1
-            
+            print(f"\n🔄 [ScrumMaster] Loop Iteration {iteration}")
+
+            # 0. CONTEXT MAINTENANCE
+            self._check_and_prune_context()
+
             # 1. BUILD
             self._set_state("BUILDING")
             self._run_agent("codex", "DRIVER", "Follow instructions in HUDDLE.md")
             self.sm.wait_for_process("codex")
+
+            # 1.5 VERIFY (Tool Use)
+            self._run_verification()
 
             # 2. REVIEW
             self._set_state("REVIEWING")
@@ -101,6 +108,101 @@ class ScrumMaster:
         if iteration >= self.max_iterations:
             print("🛑 [ScrumMaster] Max iterations reached.")
             self._set_state("AWAITING_USER")
+
+    def _check_and_prune_context(self):
+        """Checks if HUDDLE.md is too large and summarizes it if so."""
+        huddle_path = os.path.join(self.project_path, ".brain/HUDDLE.md")
+        if not os.path.exists(huddle_path):
+            return
+
+        try:
+            with open(huddle_path, "r", encoding="utf-8") as f:
+                lines = f.readlines()
+            
+            if len(lines) > 200:
+                print("✂️ [ScrumMaster] Context Pruning Triggered (Lines > 200)")
+                
+                # 1. Summarize content via Agent (using subprocess for simplicity to get output)
+                content = "".join(lines)
+                summary_prompt = (
+                    f"ACTION: Summarize the following session log. Focus on pending tasks and current status. "
+                    f"Discard completed steps.\n\nLOG:\n{content[-4000:]}" # Send last 4k chars to fit context
+                )
+                
+                # We need a way to get the summary text back. check_output is useful here.
+                # Assuming 'claude --print' outputs just the response.
+                import subprocess
+                cmd = ["claude", "--print", summary_prompt]
+                if not ENABLE_REAL_AGENTS:
+                    summary = "Context Summarized.\n- Pending: Check bugs.\n- Status: In Progress."
+                else:
+                    try:
+                        result = subprocess.run(
+                            cmd, 
+                            cwd=self.project_path, 
+                            capture_output=True, 
+                            text=True, 
+                            timeout=20
+                        )
+                        summary = result.stdout.strip()
+                    except:
+                        summary = "Context Summarized (Auto)."
+
+                # 2. Archive Old Huddle
+                self.memory.archive_huddle(content)
+                
+                # 3. Overwrite Huddle with Summary
+                timestamp = datetime.datetime.now().strftime("%H:%M")
+                new_huddle = (
+                    f"# Mission Continuation\n> Pruned: {timestamp}\n\n"
+                    f"**System:** Previous context archived. Summary:\n"
+                    f"{summary}\n\n"
+                    f"**System:** Resuming flow.\n"
+                )
+                
+                with open(huddle_path, "w", encoding="utf-8") as f:
+                    f.write(new_huddle)
+                    
+                print("✂️ [ScrumMaster] Context Pruned & Archived.")
+        except Exception as e:
+            print(f"⚠️ [ScrumMaster] Pruning failed: {e}")
+
+    def _run_verification(self):
+        """Runs automated tests and reports results to the Huddle."""
+        print("🧪 [ScrumMaster] Running Verification...")
+        
+        # Detect project type
+        cmd = None
+        if os.path.exists(os.path.join(self.project_path, "package.json")):
+            cmd = ["npm", "test"]
+        elif os.path.exists(os.path.join(self.project_path, "requirements.txt")) or \
+             any(f.endswith(".py") for f in os.listdir(self.project_path)):
+            cmd = ["pytest"]
+        
+        if not cmd:
+            self._append_to_huddle("System", "No tests detected (no package.json or requirements.txt). Skipping verification.")
+            return
+
+        # Run Verification
+        try:
+            import subprocess
+            result = subprocess.run(
+                cmd, 
+                cwd=self.project_path, 
+                capture_output=True, 
+                text=True, 
+                timeout=30
+            )
+            
+            output = result.stdout + "\n" + result.stderr
+            status = "PASSED" if result.returncode == 0 else "FAILED"
+            
+            report = f"Verification Results ({status}):\n```\n{output.strip()[-2000:]}\n```" # Cap output size
+            self._append_to_huddle("System", report)
+            print(f"🧪 [ScrumMaster] Verification {status}.")
+            
+        except Exception as e:
+            self._append_to_huddle("System", f"Verification Failed to Run: {e}")
 
     def _analyze_huddle_status(self):
         try:
