@@ -5,9 +5,9 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.live import Live
 from rich.layout import Layout
-from backend.subprocess_manager import SubprocessManager
-from backend.scrum import ScrumMaster
-from backend.memory import MemoryCore
+from dco.backend.subprocess_manager import SubprocessManager
+from dco.backend.scrum import ScrumMaster
+from dco.backend.memory import MemoryCore
 
 console = Console()
 

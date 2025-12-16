@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dco"
+version = "1.0.0"
+authors = [
+  { name="Antigravity", email="agent@example.com" },
+]
+description = "Dual-Core Orchestrator - Twin-Turbo Terminal Edition"
+readme = "README.md"
+requires-python = ">=3.9"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "fastapi",
+    "uvicorn",
+    "rich",
+    "chromadb",
+    "python-dotenv",
+    "websockets"
+]
+
+[project.scripts]
+dco = "dco.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

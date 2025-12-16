@@ -19,3 +19,9 @@ coverage/
 # Python Virtual Envs
 .venv/
 backend/venv/
+venv/
+ENV/
+
+# Python Packaging
+*.egg-info/
+.eggs/
