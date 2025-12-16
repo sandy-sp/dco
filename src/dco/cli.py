@@ -3,8 +3,6 @@ import os
 import sys
 from rich.console import Console
 from rich.panel import Panel
-from rich.live import Live
-from rich.layout import Layout
 from dco.backend.subprocess_manager import SubprocessManager
 from dco.backend.scrum import ScrumMaster
 from dco.backend.memory import MemoryCore
@@ -15,40 +13,54 @@ def main():
     console.clear()
     console.print(Panel.fit("[bold blue]DCO: Dual-Core Orchestrator[/bold blue]\n[dim]Twin-Turbo Terminal Edition[/dim]"))
 
-    # Setup Backend
     sm = SubprocessManager()
     mem = MemoryCore()
-    
-    # We pass a dummy broadcast func since we are in CLI mode
-    scrum = ScrumMaster(sm, mem, broadcast_func=None) 
+    scrum = ScrumMaster(sm, mem, broadcast_func=None)
     
     # 1. Project Setup
-    project_path = console.input("[bold yellow]Enter Project Path (default: .): [/bold yellow]") or "."
+    default_path = os.getcwd()
+    project_path = console.input(f"[bold yellow]Enter Project Path (default: {default_path}): [/bold yellow]") or default_path
     scrum.set_project_path(project_path)
 
     # 2. Main Input Loop
     while True:
-        task = console.input("\n[bold green]Mission Instruction > [/bold green]")
-        if task.lower() in ['exit', 'quit']:
+        # --- DYNAMIC PROMPT LOGIC ---
+        if scrum.state == "AWAITING_USER":
+            # Fetch what the agents asked
+            last_msg = scrum.get_latest_question()
+            console.print(f"\n[bold red]🤖 Agents Need Input:[/bold red]")
+            console.print(Panel(last_msg, border_style="red"))
+            prompt_text = "\n[bold yellow]Reply to Agents > [/bold yellow]"
+        else:
+            prompt_text = "\n[bold green]Mission Instruction > [/bold green]"
+
+        # Wait for user input
+        try:
+            user_input = console.input(prompt_text)
+        except KeyboardInterrupt:
+            console.print("\n[dim]Exiting...[/dim]")
             break
 
-        # Register a callback to print logs to terminal in real-time
-        def cli_logger(agent, msg):
-            color = "blue" if agent == "claude" else "green"
-            console.print(f"[{color}][{agent.upper()}][/{color}] {msg}")
+        if user_input.lower() in ['exit', 'quit']:
+            break
 
-        sm.register_callback(cli_logger)
+        # Register logger only once
+        if not sm.log_callbacks:
+            def cli_logger(agent, msg):
+                color = "blue" if agent == "claude" else "green"
+                console.print(f"[{color}][{agent.upper()}][/{color}] {msg}")
+            sm.register_callback(cli_logger)
 
-        console.print(f"[bold]🚀 Starting Mission: {task}[/bold]")
-        scrum.start_sprint(task)
+        scrum.start_sprint(user_input)
 
         # Wait loop (Keep CLI alive while agents work)
-        while scrum.state != "IDLE" and scrum.state != "AWAITING_USER":
-            time.sleep(0.5)
-
-        if scrum.state == "AWAITING_USER":
-            console.print("[bold red]⚠️ Agents requested input![/bold red]")
-            # Loop restarts, allowing user to reply
+        try:
+            while scrum.state != "IDLE" and scrum.state != "AWAITING_USER":
+                time.sleep(0.5)
+        except KeyboardInterrupt:
+            console.print("\n[bold red]🛑 Mission Interrupted![/bold red]")
+            # Ideally add logic to kill subprocesses here
+            break
 
 if __name__ == "__main__":
     main()

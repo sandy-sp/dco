@@ -1,7 +1,7 @@
-# Mission: Build a Calculator.
-> Started: 23:16
+# Mission: build a calculator
+> Started: 23:55
 
 **System:** Mission initialized.
-Working...
-Working...
-STATUS: NEEDS_INPUT
+Work done.
+Work done.
+Analyzing... STATUS: COMPLETED

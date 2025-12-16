@@ -3,6 +3,7 @@ import time
 import os
 import datetime
 import re
+import random
 from .memory import MemoryCore
 from dotenv import load_dotenv
 
@@ -16,7 +17,7 @@ class ScrumMaster:
         self.state = "IDLE"
         self.project_path = os.getcwd()
         self.broadcast_func = broadcast_func
-        self.max_iterations = 10  # Increased limit for long loops
+        self.max_iterations = 10 
 
     def set_project_path(self, path: str):
         if os.path.exists(path):
@@ -29,10 +30,8 @@ class ScrumMaster:
              print(f"[ScrumMaster] Busy ({self.state})")
              return
         
-        # Detect if this is a continuation (reply) or a new mission
         is_continuation = (self.state == "AWAITING_USER")
         
-        # Run in thread to keep non-blocking
         workflow_thread = threading.Thread(
             target=self._run_autonomous_loop, 
             args=(task_name, is_continuation)
@@ -41,46 +40,45 @@ class ScrumMaster:
 
     def _set_state(self, new_state):
         self.state = new_state
-        print(f"[ScrumMaster] State Change: {new_state}")
-        # Optional: Broadcast to UI if connected
-        if self.broadcast_func:
-            import asyncio
-            try:
-                loop = asyncio.get_event_loop()
-                asyncio.run_coroutine_threadsafe(
-                    self.broadcast_func({"type": "state_change", "state": new_state}), loop
-                )
-            except:
-                pass
+        # Optional: Broadcast logic here
+
+    def get_latest_question(self):
+        """Reads the last entry from the Huddle to show the user."""
+        try:
+            huddle_path = os.path.join(self.project_path, ".brain/HUDDLE.md")
+            with open(huddle_path, "r", encoding="utf-8") as f:
+                lines = f.readlines()
+            # Get the last non-empty line
+            for line in reversed(lines):
+                if line.strip():
+                    return line.strip()
+            return "Agents requested input."
+        except:
+            return "Check HUDDLE.md for details."
 
     def _run_autonomous_loop(self, task_payload: str, is_continuation: bool):
         iteration = 0
         
         if is_continuation:
-            # Append User Response to Huddle
             self._append_to_huddle("User", task_payload)
             print("▶️ [ScrumMaster] Resuming Mission with User Feedback...")
         else:
-            # New Mission: Reset Everything
             self.initialize_huddle(task_payload)
             print("🚀 [ScrumMaster] Starting New Mission...")
             
-            # Initial Planning Phase (Only for new missions)
             self._set_state("PLANNING")
             self._run_agent("claude", "NAVIGATOR", task_payload)
             self.sm.wait_for_process("claude")
 
-        # --- THE INFINITE LOOP (Until Completed or Input Needed) ---
         while iteration < self.max_iterations:
             iteration += 1
-            print(f"\n🔄 [ScrumMaster] Loop Iteration {iteration}")
-
-            # 1. BUILD (Codex works on the latest plan/feedback)
+            
+            # 1. BUILD
             self._set_state("BUILDING")
             self._run_agent("codex", "DRIVER", "Follow instructions in HUDDLE.md")
             self.sm.wait_for_process("codex")
 
-            # 2. REVIEW (Claude checks the work)
+            # 2. REVIEW
             self._set_state("REVIEWING")
             self._run_agent("claude", "REVIEWER", "Review the implementation in HUDDLE.md")
             self.sm.wait_for_process("claude")
@@ -93,15 +91,15 @@ class ScrumMaster:
                 self._set_state("IDLE")
                 break
             elif status == "USER_INPUT_REQUIRED":
-                print("⚠️ [ScrumMaster] Agents requested user input.")
+                # Only stop if explicitly requested
                 self._set_state("AWAITING_USER")
-                return # Exit thread, wait for CLI input
+                return 
             else:
-                print("🔧 [ScrumMaster] Issues found. Continuing loop...")
-                # Continue
+                # Default: Loop continues
+                pass
 
         if iteration >= self.max_iterations:
-            print("🛑 [ScrumMaster] Max iterations reached. Pausing for check-in.")
+            print("🛑 [ScrumMaster] Max iterations reached.")
             self._set_state("AWAITING_USER")
 
     def _analyze_huddle_status(self):
@@ -110,7 +108,6 @@ class ScrumMaster:
             with open(huddle_path, "r", encoding="utf-8") as f:
                 content = f.read().strip()
             
-            # Look at the last 1000 chars for status flags
             recent_log = content[-1000:] 
             if "STATUS: COMPLETED" in recent_log:
                 return "COMPLETED"
@@ -161,7 +158,15 @@ class ScrumMaster:
         if ENABLE_REAL_AGENTS:
             self.sm.start_subprocess(agent_name, cmd, cwd=self.project_path)
         else:
-            # Simulation
-            msg = "Working..."
-            if role == "REVIEWER": msg = "STATUS: NEEDS_INPUT" # Force loop to pause for testing
-            self.sm.start_subprocess(agent_name, ["bash", "-c", f"echo '[{role}] {msg}'; sleep 1; echo '{msg}' >> {huddle_path_rel}"], cwd=self.project_path)
+            # --- SIMULATION LOGIC (Updated to loop) ---
+            # Randomly finish after a few steps or ask for input
+            outcome = random.choice(["STATUS: COMPLETED", "Fixing bugs...", "Fixing bugs...", "STATUS: NEEDS_INPUT"])
+            msg = f"Analyzing... {outcome}"
+            
+            if role == "REVIEWER":
+                # Ensure we don't just stop immediately every time in simulation
+                mock_cmd = f"echo '[{role}] Reviewing...'; sleep 1; echo '{msg}' >> {huddle_path_rel}"
+            else:
+                mock_cmd = f"echo '[{role}] Coding...'; sleep 1; echo 'Work done.' >> {huddle_path_rel}"
+                
+            self.sm.start_subprocess(agent_name, ["bash", "-c", mock_cmd], cwd=self.project_path)
