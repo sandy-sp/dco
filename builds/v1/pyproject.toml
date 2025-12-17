@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "doc"
+version = "1.0.0"
+authors = [
+  { name="Antigravity", email="agent@example.com" },
+]
+description = "DOC: Dual Orchestrator Core"
+readme = "README.md"
+requires-python = ">=3.9"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "fastapi",
+    "uvicorn",
+    "rich",
+    "chromadb",
+    "python-dotenv",
+    "websockets"
+]
+
+[project.scripts]
+doc = "doc.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
