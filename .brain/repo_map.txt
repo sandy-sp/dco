@@ -1,4 +1,5 @@
-verify_recovery.py
+improve_doc.py
+  def parse_args()
   def main()
 src/doc/cli.py
   def make_layout()
@@ -21,6 +22,7 @@ src/doc/backend/scrum.py
       def start_sprint(self, task_name)
       def _set_state(self, new_state)
       def get_latest_question(self)
+      def _get_available_agent(self, preferred)
       def _run_autonomous_loop(self, task_payload, is_continuation)
       def _check_and_prune_context(self)
       def _run_verification(self, task)

@@ -22,6 +22,14 @@ class ScrumMaster:
         self.broadcast_func = broadcast_func
         self.max_iterations = 10 
         self.cartographer = Cartographer(self.project_path)
+        self.env = os.environ.copy() # Capture current env
+        self.sprint_result = "UNKNOWN"
+        
+        # Registry to track agent health
+        self.agent_registry = {
+            "claude": {"status": "ACTIVE", "reset_time": None},
+            "codex": {"status": "ACTIVE", "reset_time": None}
+        }
         
         # Register DB Logger to capture Agent Process Output
         self.sm.register_callback(self._capture_agent_output)
@@ -32,12 +40,39 @@ class ScrumMaster:
         # Filter out empty lines?
         if message.strip():
              self.memory.log_interaction(agent, message, type="agent_log")
+             if "Limit reached" in message:
+                 print(f"🛑 [ScrumMaster] RATE LIMIT DETECTED from {agent}!")
+                 
+                 # Parse reset time
+                 # Pattern: "resets 12am (America/New_York)" or "resets 2pm"
+                 reset_str = None
+                 match = re.search(r"resets (.*?) \(", message)
+                 if match:
+                     reset_str = match.group(1)
+                 else:
+                     # Fallback check
+                     match = re.search(r"resets (.*?) ", message)
+                     if match:
+                         reset_str = match.group(1)
+                 
+                 # Update Registry
+                 if agent in self.agent_registry:
+                     self.agent_registry[agent]["status"] = "RATE_LIMITED"
+                     self.agent_registry[agent]["reset_time"] = reset_str # Store string for now, parse later if needed
+                 
+                 # We trigger retry logic by killing process
+                 self.sm.kill_all()
 
     def set_project_path(self, path: str):
         if os.path.exists(path):
             self.project_path = path
             self.memory.set_project_path(path)
             self.cartographer.root_path = path
+            
+            # Injection regarding Versioning
+            # We want to ensure agents use THIS directory as source root
+            self.env["PYTHONPATH"] = path + os.pathsep + self.env.get("PYTHONPATH", "")
+            
             print(f"[ScrumMaster] Context: {path}")
 
     def start_sprint(self, task_name: str):
@@ -46,6 +81,7 @@ class ScrumMaster:
              return
         
         is_continuation = (self.state == "AWAITING_USER")
+        self.sprint_result = "UNKNOWN"
         
         # Ensure cartographer is ready
         if not self.cartographer:
@@ -70,6 +106,20 @@ class ScrumMaster:
         except:
             return "Check logs for details."
 
+    def _get_available_agent(self, preferred: str) -> str:
+        """Returns the preferred agent if active, otherwise swaps to backup."""
+        # Backup map
+        backups = {"claude": "codex", "codex": "claude"}
+        backup = backups.get(preferred, "codex")
+        
+        if self.agent_registry[preferred]["status"] == "ACTIVE":
+            return preferred
+        elif self.agent_registry[backup]["status"] == "ACTIVE":
+            print(f"⚠️ [ScrumMaster] Swapping {preferred} -> {backup} due to Rate Limit.")
+            return backup
+        else:
+            return "NONE"
+
     def _run_autonomous_loop(self, task_payload: str, is_continuation: bool):
         iteration = 0
         
@@ -86,24 +136,70 @@ class ScrumMaster:
             print("🚀 [ScrumMaster] Starting New Mission...")
             
             self._set_state("PLANNING")
-            self._run_agent("claude", "NAVIGATOR", task_payload)
-            if not self.sm.wait_for_process("claude", timeout=120):
-                 print("🛑 [ScrumMaster] Planning Timed Out! Killing process...")
-                 self.sm.kill_all()
-                 self._set_state("AWAITING_USER")
-                 return
+            planner = self._get_available_agent("claude")
+            if planner != "NONE":
+                self._run_agent(planner, "NAVIGATOR", task_payload)
+                if not self.sm.wait_for_process(planner, timeout=120):
+                     # If limited, we loop back to main 'while'? No, this is pre-loop.
+                     # If initial planning fails due to RL, we should just let it hit the main loop 
+                     # checking or Handle retry here. 
+                     # For simplicity, if initial planner fails, we just kill and return to allow main loop handling?
+                     # Actually, if we return, we go to AWAITING_USER. 
+                     # Let's try to simple logic:
+                     if self.agent_registry[planner]["status"] == "RATE_LIMITED":
+                         print("⚠️ [ScrumMaster] Initial Planner limited. Falling through to loop...")
+                         # We don't return, we just proceed? But we missed planning.
+                         # Better to just return and let the wrapper retry or "continue" if we were in a loop.
+                         # Since this is outside the while loop, we must return to trigger re-entry?
+                         pass 
+                     else:
+                        print("🛑 [ScrumMaster] Planning Timed Out! Killing process...")
+                        self.sm.kill_all()
+                        self._set_state("AWAITING_USER")
+                        return
 
         while iteration < self.max_iterations:
+            # Check for Rate Limits
+            if self.agent_registry["claude"]["status"] == "RATE_LIMITED" and \
+               self.agent_registry["codex"]["status"] == "RATE_LIMITED":
+                 self.state = "RATE_LIMITED"
+                 print("⏳ [ScrumMaster] ALL AGENTS RATE LIMITED.")
+                 return 
+
             iteration += 1
             print(f"\n🔄 [ScrumMaster] Loop Iteration {iteration}")
 
             # 0. CONTEXT MAINTENANCE
             self._check_and_prune_context()
 
+            # 1. PLANNING (Adaptive)
+            if self.state != "BUILDING": # Only if not mid-step
+                 self._set_state("PLANNING")
+                 planner = self._get_available_agent("claude")
+                 if planner == "NONE": continue 
+                 
+                 self._run_agent(planner, "NAVIGATOR", task_payload)
+                 if not self.sm.wait_for_process(planner, timeout=120):
+                     # If wait returns (either timeout or kill), check if it was due to RL
+                     if self.agent_registry[planner]["status"] == "RATE_LIMITED":
+                         print(f"🔄 [ScrumMaster] Retry Planning with backup...")
+                         continue # Retry
+                     
+                     print("🛑 [ScrumMaster] Planning Timed Out...")
+                     self.sm.kill_all()
+                     break
+
             # 1. BUILD
             self._set_state("BUILDING")
-            self._run_agent("codex", "DRIVER", "Follow instructions in HUDDLE.md")
-            if not self.sm.wait_for_process("codex", timeout=120):
+            builder = self._get_available_agent("codex")
+            if builder == "NONE": continue
+            
+            self._run_agent(builder, "DRIVER", "Follow instructions in HUDDLE.md")
+            if not self.sm.wait_for_process(builder, timeout=120):
+                 if self.agent_registry[builder]["status"] == "RATE_LIMITED":
+                     print(f"🔄 [ScrumMaster] Retry Building with backup...")
+                     continue # Retry
+                     
                  print("🛑 [ScrumMaster] Build Timed Out! Killing process...")
                  self.sm.kill_all()
                  break
@@ -113,8 +209,15 @@ class ScrumMaster:
 
             # 2. REVIEW
             self._set_state("REVIEWING")
-            self._run_agent("claude", "REVIEWER", "Review the implementation in HUDDLE.md")
-            if not self.sm.wait_for_process("claude", timeout=120):
+            reviewer = self._get_available_agent("claude")
+            if reviewer == "NONE": continue
+
+            self._run_agent(reviewer, "REVIEWER", "Review the implementation in HUDDLE.md")
+            if not self.sm.wait_for_process(reviewer, timeout=120):
+                 if self.agent_registry[reviewer]["status"] == "RATE_LIMITED":
+                     print(f"🔄 [ScrumMaster] Retry Review with backup...")
+                     continue # Retry 
+                     
                  print("🛑 [ScrumMaster] Review Timed Out! Killing process...")
                  self.sm.kill_all()
                  break
@@ -124,6 +227,7 @@ class ScrumMaster:
             
             if status == "COMPLETED":
                 print("✅ [ScrumMaster] Mission Accomplished.")
+                self.sprint_result = "SUCCESS"
                 print("🧠 [ScrumMaster] Assimilating new skills...")
                 self._run_learning_phase(task_payload)
                 self._set_state("IDLE")
@@ -170,7 +274,8 @@ class ScrumMaster:
                 cwd=self.project_path, 
                 capture_output=True, 
                 text=True, 
-                timeout=30
+                timeout=30,
+                env=self.env
             )
             
             output = result.stdout + "\n" + result.stderr
@@ -288,7 +393,7 @@ class ScrumMaster:
         cmd = [CLAUDE_BIN if agent_name == "claude" else CODEX_BIN, "--print" if agent_name == "claude" else "-p", prompt]
         
         if ENABLE_REAL_AGENTS:
-            self.sm.start_subprocess(agent_name, cmd, cwd=self.project_path)
+            self.sm.start_subprocess(agent_name, cmd, cwd=self.project_path, env=self.env)
         else:
             # --- SIMULATION LOGIC ---
             outcome = random.choice(["STATUS: COMPLETED", "Fixing bugs...", "Fixing bugs...", "STATUS: NEEDS_INPUT"])
@@ -318,4 +423,4 @@ class ScrumMaster:
             else:
                  mock_cmd = f"echo '[{role}] Coding...'; sleep 1; echo 'Work done.'"
                  
-            self.sm.start_subprocess(agent_name, ["bash", "-c", mock_cmd], cwd=self.project_path)
+            self.sm.start_subprocess(agent_name, ["bash", "-c", mock_cmd], cwd=self.project_path, env=self.env)

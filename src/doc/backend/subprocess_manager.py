@@ -10,7 +10,7 @@ class SubprocessManager:
     def register_callback(self, callback: Callable[[str, str], None]):
         self.log_callbacks.append(callback)
 
-    def start_subprocess(self, name: str, command: List[str], cwd: Optional[str] = None):
+    def start_subprocess(self, name: str, command: List[str], cwd: Optional[str] = None, env: Optional[Dict[str, str]] = None):
         """Starts a subprocess in a specific directory."""
         print(f"[SubprocessManager] Starting {name} in {cwd or '.'} with: {' '.join(command)}")
         
@@ -22,7 +22,8 @@ class SubprocessManager:
                 text=True,
                 bufsize=1,
                 universal_newlines=True,
-                cwd=cwd
+                cwd=cwd,
+                env=env
             )
             
             self.active_processes[name] = process

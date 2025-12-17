@@ -2,10 +2,10 @@ import unittest
 from unittest.mock import MagicMock, patch
 import os
 import shutil
-import backend.scrum as scrum_module
-from backend.scrum import ScrumMaster
-from backend.memory import MemoryCore
-from backend.subprocess_manager import SubprocessManager
+import doc.backend.scrum as scrum_module
+from doc.backend.scrum import ScrumMaster
+from doc.backend.memory import MemoryCore
+from doc.backend.subprocess_manager import SubprocessManager
 
 class TestScrumMaster(unittest.TestCase):
     def setUp(self):
@@ -31,7 +31,7 @@ class TestScrumMaster(unittest.TestCase):
         if os.path.exists(self.test_brain):
             shutil.rmtree(self.test_brain)
 
-    @patch('backend.scrum.ENABLE_REAL_AGENTS', True)  # Force real command generation
+    @patch('doc.backend.scrum.ENABLE_REAL_AGENTS', True)  # Force real command generation
     @patch('time.sleep', return_value=None)          # Skip sleep delays
     @patch('threading.Thread')                       # Mock Threading
     def test_start_sprint_roles(self, mock_thread_cls, mock_sleep):
