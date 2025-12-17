@@ -6,39 +6,36 @@ import re
 class VersionManager:
     def __init__(self, root_dir):
         self.root = root_dir
-        self.stable_path = os.path.join(root_dir, "src") # Initial baseline
-        self.current_version_path = None
+        # We will create versions in a 'builds' subdirectory to keep root clean
+        self.builds_dir = os.path.join(root_dir, "builds")
+        os.makedirs(self.builds_dir, exist_ok=True)
         
-        # Identify 'Latest Stable' logic
-        # For simplicity, we assume 'src' is stable initially.
-        # We need to track the 'pointer' to what we copy FROM.
-        self.latest_stable_ptr = self.stable_path
+        self.latest_stable_source = root_dir # Start with the actual repo
+        self.ignore_patterns = shutil.ignore_patterns(
+            "builds", ".git", ".brain", "__pycache__", "venv", ".env", "dist"
+        )
+        self.current_version_path = None
 
     def prepare_next_version(self):
-        """Creates srcv{N+1} from latest stable."""
+        """Creates a full repo copy in builds/v{N+1}."""
         next_idx = 1
-        
-        # Scan for existing srcvN
-        existing = [d for d in os.listdir(self.root) if d.startswith("srcv") and os.path.isdir(os.path.join(self.root, d))]
+        existing = [d for d in os.listdir(self.builds_dir) if d.startswith("v")]
         if existing:
             # Extract max N
-            idxs = []
-            for d in existing:
-                match = re.search(r"srcv(\d+)", d)
-                if match:
-                    idxs.append(int(match.group(1)))
-            if idxs:
-                next_idx = max(idxs) + 1
+            idxs = [int(re.search(r"v(\d+)", d).group(1)) for d in existing if re.search(r"v(\d+)", d)]
+            if idxs: next_idx = max(idxs) + 1
         
-        new_dir_name = f"srcv{next_idx}"
-        new_path = os.path.join(self.root, new_dir_name)
+        new_dir_name = f"v{next_idx}"
+        new_path = os.path.join(self.builds_dir, new_dir_name)
         
-        print(f"📦 [VersionManager] creating {new_dir_name} from {os.path.basename(self.latest_stable_ptr)}...")
+        print(f"📦 [VersionManager] Cloning repo to {new_path}...")
         
+        # Copy the FULL repository (excluding builds/git/etc)
         if os.path.exists(new_path):
             shutil.rmtree(new_path)
+            
+        shutil.copytree(self.latest_stable_source, new_path, ignore=self.ignore_patterns)
         
-        shutil.copytree(self.latest_stable_ptr, new_path)
         self.current_version_path = new_path
         return new_path
 
@@ -88,7 +85,10 @@ def main():
     # 2. Initialize Components
     # We share the SubprocessManager so we can register our own callbacks
     sm = SubprocessManager()
-    memory = MemoryCore(persist_path=".brain/memory.db")
+    
+    # 1. Establish a GLOBAL Brain Path
+    global_brain_path = os.path.abspath(os.path.join(os.getcwd(), ".brain/memory.db"))
+    memory = MemoryCore(persist_path=global_brain_path)
     
     # Register CLI Output Callback
     def cli_printer(agent: str, message: str):
@@ -126,14 +126,25 @@ def main():
                 print(f"\n🔁 Starting Loop {loop_count + 1}/{MAX_LOOPS}")
                 
                 # PREPARE VERSION
+                # PREPARE VERSION
                 current_ver_path = vm.prepare_next_version()
+                
+                # CRITICAL: When setting path, we must NOT reset the memory location
+                # We need to modify scrum.py OR just ensure we don't break the pointer.
+                # The current scrum.py overwrites it. 
+                # WORKAROUND: Manually restore it after setting project path.
+                
                 scrum.set_project_path(current_ver_path)
+                scrum.memory.persist_path = global_brain_path 
+                scrum.memory._init_client(global_brain_path) # Force reconnection to global DB
                 
                 if loop_count == 0:
                      # First Run
                      prompt = (
-                         "Analyze src/doc and ARCHITECTURE.md. "
-                         "Refactor the most critical architectural weakness you find."
+                        "Analyze the repository structure (src/doc, docs/ARCHITECTURE.md). "
+                        "Refactor the 'ScrumMaster' logic to better handle state transitions. "
+                        "Ensure you update 'src/doc/backend/scrum.py'. "
+                        "Run verification to ensure you didn't break the build."
                      )
                 else:
                      prompt = (
